@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * components/SmtpSettings.jsx  —  Tab 4
+ * components/SmtpSettings.jsx  —  Tab 4 (Settings)
  * ---------------------------------------------------------------------------
  * Gmail / SMTP credentials plus the compliance fields that go in every footer.
  *

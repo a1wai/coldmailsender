@@ -6,6 +6,7 @@ Every dependency is open-source or has a permanent free tier. There is nothing t
 
 ```
 Next.js 14 (App Router) · Tailwind CSS · nodemailer · axios + cheerio · lucide-react
+Lead data from OpenStreetMap · no API keys required to run
 ```
 
 ---
@@ -27,54 +28,57 @@ Next.js 14 (App Router) · Tailwind CSS · nodemailer · axios + cheerio · luci
 
 ## What it does
 
-Five tabs, in the order you actually use them.
+Four tabs, in the order you actually use them.
 
-### 1. Lead Finder
+### 1. Find leads
 
-Describe your target (industry, city, keywords) and get one-click links into Google, Google Maps, Bing, DuckDuckGo and OpenStreetMap. You review those results and paste the business URLs back in — the app then crawls each site for a contact address.
+Pick a business type and a place, press **Find leads**. That's the whole interaction.
 
-The crawler reads the homepage plus any obvious `contact` / `about` / `impressum` pages, un-mangles common obfuscations (`hi [at] acme [dot] com`), and ranks what it finds so a named human sorts above `info@`, and `info@` sorts above `noreply@`. Boilerplate from analytics snippets and stock templates is filtered out. Every result is editable inline.
+Behind it, two steps run back to back with live progress:
 
-> The app does **not** auto-scrape search-engine result pages. That breaches Google's and Bing's Terms of Service, and the manual review pass is what keeps a list relevant rather than merely large.
+1. **OpenStreetMap** is queried for real businesses of that type in that area — name, website, phone, address, and for a useful minority an e-mail already published in the map data.
+2. Every business that has a website but no address gets **crawled** for one.
 
-### 2. Templates
+The location field autocompletes as you type (also OpenStreetMap), so "Troy" resolves to the right Troy and the search radius is sized to the place rather than guessed.
 
-Unlimited templates with full create/read/update/delete, organised by tags, with a live preview rendered against one of your real leads.
+There's a single **Open Google Maps** button for eyeballing an area yourself, an **Add a lead by hand** form, and a **Paste website URLs** box for a list you already have. The `Name` column falls back to the domain when no person is found — `intoworld.com` becomes `Intoworld` — so every row is usable in a template.
 
-Placeholders are `{{like_this}}`, case-insensitive, and support a fallback after a pipe:
+> The app does **not** scrape Google Search or Maps results. Their Terms of Service prohibit it and they block it in practice, so anything built on it breaks within days. OpenStreetMap data is ODbL-licensed and explicitly meant to be queried, which is why it's the automated path here.
+
+### 2. Write message
+
+Three sections behind one segmented control.
+
+**Write one for me** — answer four or five questions (what you do, who you're writing to, how it should open, tone) and get a finished template plus a matching follow-up. This runs locally: free, instant, no API key. If the deployment has an `ANTHROPIC_API_KEY` set, a second button hands the same answers to Claude for fresher wording. **That button is the only paid thing in this app** and the UI says so before you press it.
+
+**My templates** — unlimited templates with full create/read/update/delete, tags, and a live preview rendered against one of your real leads. Eight starter templates ship with it, across video, web, photography, writing and formal B2B.
+
+Placeholders are `{{like_this}}`, case-insensitive, with a fallback after a pipe:
 
 | Placeholder | Resolves to |
 |---|---|
 | `{{name}}` / `{{first_name}}` | Contact name, or just the first word of it |
 | `{{business}}` | Business name |
 | `{{website}}` / `{{domain}}` | Full URL / bare domain |
-| `{{industry}}` / `{{location}}` | From the Lead Finder form |
+| `{{industry}}` / `{{location}}` | From the lead search |
 | `{{product}}` | What you are offering (set per campaign) |
-| `{{reel_link}}` | The portfolio link marked active in Tab 3 |
+| `{{reel_link}}` | The link marked active in Files & links |
 | `{{sender_name}}` | Your name |
 | `{{anything_else}}` | Any custom field on the lead |
 
-`{{name|there}}` renders `there` when the name is unknown. Use fallbacks — a message that opens `Hi ,` is worse than no message. When a placeholder resolves to nothing, the renderer also tidies the leftover punctuation, so `Hi {{name}}, hello` degrades to `Hi, hello` rather than `Hi , hello`.
+`{{name|there}}` renders `there` when the name is unknown. Use fallbacks — a message that opens `Hi ,` is worse than no message. When a placeholder resolves to nothing the renderer tidies the leftover punctuation, so `Hi {{name}}, hello` degrades to `Hi, hello`.
 
-### 3. Attachments & Links
+**Files & links** — paste a Google Drive, YouTube, Vimeo or portfolio link and mark one active; `{{reel_link}}` resolves to it everywhere, so swapping which reel a campaign points at is one click. Drive links are cleaned up automatically and an *edit* link is converted to a *view* link, because an edit link either fails for the recipient or hands them write access. Drag-and-drop file attachments also work (3 MB cap), but a Drive link is the better answer for anything file-shaped — no size limit, previews inline in Gmail, and you can update the file later without resending.
 
-Drag-and-drop file attachments (3 MB total, capped to stay inside Vercel's request-body limit), plus a library of portfolio/reel links. Mark one link active and `{{reel_link}}` resolves to it everywhere — swapping which reel a campaign points at is one click, not an edit to every template.
+### 3. Send
 
-Attachments are held in memory only and clear on reload. This is deliberate: base64 file data would blow through the browser's ~5 MB storage quota and evict the leads and templates that actually matter.
-
-### 4. Credentials
-
-Gmail address, sender name, and 16-character app password, with a **Test Connection** button that authenticates without sending, and a **Send test to myself** button that delivers one real message to your own address.
-
-Any SMTP provider works — the advanced panel exposes host, port and encryption, so Zoho, Brevo, Mailgun and Resend all drop in. Same tab holds the compliance footer settings (postal address, unsubscribe URL).
-
-### 5. Campaign
-
-Select recipients, pick a template, set the delay range, and run it. You get pre-flight checks that block the send button until real problems are fixed, a live log, a countdown between sends, per-recipient status in the table, and working pause/resume/stop.
+Select recipients, pick a template, set the delay range, and run it. You get pre-flight checks that block the send button until real problems are fixed, a live log, a countdown between sends, per-recipient status, and working pause/resume/stop.
 
 **Dry run is on by default.** It renders every message and exercises the whole pipeline without touching SMTP. Leave it on for the first pass.
 
----
+### 4. Settings
+
+Gmail address, sender name, and 16-character app password, with **Test Connection** (authenticates without sending) and **Send test to myself** (delivers one real message to your own address). Any SMTP provider works — the advanced panel exposes host, port and encryption, so Zoho, Brevo, Mailgun and Resend all drop in. The compliance footer settings (postal address, unsubscribe URL) live here too.
 
 ## Quick start
 
@@ -87,7 +91,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000>. No `.env` file is needed to start — credentials can be typed into Tab 4, and everything persists in your browser.
+Open <http://localhost:3000>. No `.env` file is needed to start — credentials go in **Settings**, and everything persists in your browser.
 
 To keep secrets off the browser instead, copy `.env.example` to `.env.local` and fill in `SMTP_USER` / `SMTP_PASS`.
 
@@ -101,7 +105,7 @@ A normal Google password will always be rejected by SMTP. You need a 16-characte
 2. Go to <https://myaccount.google.com/apppasswords>.
 3. Create one named anything you like — "Cold Email Sender" is fine.
 4. Copy the 16 characters. Google shows them as four groups (`abcd efgh ijkl mnop`); paste them however you like, the app strips spaces.
-5. Paste into Tab 4, then hit **Test Connection**.
+5. Paste it into **Settings**, then hit **Test Connection**.
 
 Revoke it from that same page whenever you want; it grants mail access only and never exposes your real password.
 
@@ -117,7 +121,7 @@ Revoke it from that same page whenever you want; it grants mail access only and 
 2. **Import it.** At <https://vercel.com/new>, pick the repo. Vercel detects Next.js — leave every build setting at its default.
 3. **Add environment variables** (all optional — see the table below). At minimum, consider `SMTP_USER` and `SMTP_PASS` so credentials never live in a browser. Add them under *Environment Variables* before the first deploy, or in *Settings → Environment Variables* afterwards.
 4. **Deploy.** The build takes a minute or two.
-5. **Open your URL** and go to Tab 4 → *Test Connection*.
+5. **Open your URL** and go to **Settings** → *Test Connection*.
 
 ### Via the CLI
 
@@ -147,6 +151,7 @@ Every one is optional. Full annotated list in [`.env.example`](.env.example).
 | `SMTP_USER`, `SMTP_PASS` | Server-side credentials, so the browser never holds your password |
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Display name and an alternate reply address |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Non-Gmail providers (defaults: `smtp.gmail.com`, `465`, `true`) |
+| `ANTHROPIC_API_KEY` | Adds the "Write it with Claude" button to the template wizard — **paid**, see below |
 | `SENDER_POSTAL_ADDRESS` | Physical address for the footer — legally required for commercial mail |
 | `UNSUBSCRIBE_EMAIL`, `UNSUBSCRIBE_URL` | Opt-out targets; also populate the `List-Unsubscribe` header |
 | `FIRECRAWL_API_KEY` | Enables the JS-rendering scraper fallback |
@@ -161,6 +166,14 @@ The header shows a green badge for each integration it detects, so you can confi
 ## Optional free-tier integrations
 
 All three are genuinely optional. The app is fully functional with none of them.
+
+### Claude — better template wording (paid, and the only one)
+
+The template wizard already works with no key: it assembles templates locally, instantly, for free. A key adds a second button that hands the same answers to Claude and gets fresher wording back.
+
+**This is the one part of the app that costs money.** The Anthropic API is paid and has no permanent free tier. A template generation is a fraction of a cent, but it is not zero, and the UI labels the button accordingly. Leave `ANTHROPIC_API_KEY` unset to keep the deployment entirely free — nothing else changes.
+
+Key at <https://console.anthropic.com>.
 
 ### Firecrawl — deeper scraping
 
@@ -194,6 +207,14 @@ The single most important design decision. A campaign that waits 5–15 seconds 
 
 So the schedule lives in the browser (`lib/queue.js`) and each send is its own sub-second call to `/api/send-email`. Every invocation finishes in about a second, nothing approaches the limit, and pause/stop take effect immediately. The trade-off is the open tab, which QStash removes if you need it.
 
+### Where lead data comes from
+
+Business discovery queries the **Overpass API** against OpenStreetMap, and location autocomplete uses **Nominatim**. Both are free, keyless, ODbL-licensed, and explicitly built to be queried — no Terms of Service problem and nothing to sign up for.
+
+Both are also donation-funded, so the app throttles itself: location lookups are debounced and cached server-side, discovery is rate-limited per client, requests carry an honest `User-Agent`, and the Overpass call falls back to a mirror when the main instance is busy. Please don't remove those limits — they're the reason the services stay free.
+
+The trade-off is coverage: OpenStreetMap is volunteer-mapped, so a dense European city returns far more than a sparse suburb. When a search comes back thin, use the Google Maps button and paste what you find.
+
 ### Why the delays matter
 
 Sending is sequential with a randomised gap. Parallel sending is the fastest possible way to get an account rate-limited, and a perfectly regular interval is itself a bot signal. The floor is 3 seconds because Gmail starts throttling below roughly that.
@@ -219,26 +240,38 @@ app/
   layout.js                  Root layout and metadata
   page.js                    Shell: tabs and all shared state
   globals.css                Tailwind layers and component classes
+  icon.svg                   Favicon
   api/
-    scrape/route.js          Batch crawl → leads
+    discover/route.js        OpenStreetMap business search
+    places/route.js          Location autocomplete (Nominatim proxy)
+    scrape/route.js          Batch crawl → e-mail addresses
     send-email/route.js      Sends exactly one message
     test-smtp/route.js       POST verifies credentials; GET reports integrations
+    ai-template/route.js     Template wizard (local builder, optional Claude)
 components/
   Header.jsx                 Branding, daily quota, integration badges, backup
   LeadFinder.jsx             Tab 1
-  TemplateManager.jsx        Tab 2
-  AttachmentManager.jsx      Tab 3
-  SmtpSettings.jsx           Tab 4
-  CampaignDashboard.jsx      Tab 5
+  LocationInput.jsx          Autocomplete field used by Tab 1
+  MessageStudio.jsx          Tab 2 — wraps the three sections below
+    TemplateWizard.jsx         "Write one for me"
+    TemplateManager.jsx        "My templates"
+    AttachmentManager.jsx      "Files & links"
+  CampaignDashboard.jsx      Tab 3 — Send
+  SmtpSettings.jsx           Tab 4 — Settings
   LeadTable.jsx              Shared table: selection, inline edit, sort, filter
   ui.jsx                     Shared primitives
 lib/
-  scraper.js                 Crawler, SSRF guard, robots.txt, extraction  (server)
-  mailer.js                  nodemailer wrapper, compliance footer        (server)
-  templates.js               Placeholder rendering                        (isomorphic)
-  queue.js                   Paced send queue                             (isomorphic)
-  storage.js                 Browser persistence, import/export           (client)
-  search-urls.js             Directory links and URL parsing              (isomorphic)
+  places.js                  Nominatim + Overpass queries and parsing   (server)
+  scraper.js                 Crawler, SSRF guard, robots.txt            (server)
+  mailer.js                  nodemailer wrapper, compliance footer      (server)
+  leads.js                   Lead shape, domain-derived names, merging  (isomorphic)
+  templates.js               Placeholder rendering, starter library     (isomorphic)
+  template-builder.js        Deterministic template assembly            (isomorphic)
+  queue.js                   Paced send queue                           (isomorphic)
+  drive.js                   Google Drive link normalisation            (isomorphic)
+  business-types.js          Industry → OpenStreetMap tag mapping       (isomorphic)
+  search-urls.js             URL parsing and directory links            (isomorphic)
+  storage.js                 Browser persistence, import/export         (client)
   constants.js               Shared limits
   http.js                    JSON envelopes, body guard, rate limiter
   adapters/                  firecrawl.js · qstash.js · supabase.js

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * components/CampaignDashboard.jsx  —  Tab 5
+ * components/CampaignDashboard.jsx  —  Tab 3 (Send)
  * ---------------------------------------------------------------------------
  * Campaign execution: pick a template, select recipients, and run the queue.
  *

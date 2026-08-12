@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * components/AttachmentManager.jsx  —  Tab 3
+ * components/AttachmentManager.jsx  —  "Files & links" (Write message tab)
  * ---------------------------------------------------------------------------
  * Two related jobs:
  *
@@ -22,6 +22,7 @@ import { useCallback, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Film,
+  HardDrive,
   Link as LinkIcon,
   Paperclip,
   Plus,
@@ -33,6 +34,7 @@ import {
 import { Alert, Badge, Card, EmptyState, formatBytes } from './ui';
 import { readFileAsDataUrl } from '@/lib/storage';
 import { MAX_ATTACHMENT_BYTES } from '@/lib/constants';
+import { DRIVE_PERMISSION_REMINDER, describeDriveLink, inspectDriveUrl } from '@/lib/drive';
 
 export default function AttachmentManager({ attachments, onAttachmentsChange, reelLinks, onReelLinksChange, campaign, onCampaignChange }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -106,10 +108,20 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
       return;
     }
 
+    // Google links get rewritten to a clean view URL, and an edit link is
+    // caught here rather than by a confused recipient.
+    const drive = inspectDriveUrl(normalized);
+    if (drive.isGoogle && drive.fileId) {
+      normalized = drive.url;
+      setError(null);
+      if (drive.warning) setError(drive.warning);
+    }
+
     const link = {
       id: `reel_${Date.now()}`,
-      label: newLink.label.trim() || guessLabel(normalized),
+      label: newLink.label.trim() || (drive.isGoogle ? describeDriveLink(drive) : guessLabel(normalized)),
       url: normalized,
+      isDrive: drive.isGoogle,
     };
 
     const next = [...reelLinks, link];
@@ -144,8 +156,8 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
     <div className="flex flex-col gap-5">
       {/* ------------------------------------------------------ reel links */}
       <Card
-        title="Portfolio & reel links"
-        description="The active link fills {{reel_link}} in every template. Swap it here instead of editing each one."
+        title="Files & links to share"
+        description="Paste a Google Drive, YouTube or portfolio link. The active one fills {{reel_link}} in every template."
       >
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -161,7 +173,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
             value={newLink.url}
             onChange={(event) => setNewLink({ ...newLink, url: event.target.value })}
             onKeyDown={(event) => event.key === 'Enter' && addReelLink()}
-            placeholder="https://youtube.com/watch?v=…"
+            placeholder="https://drive.google.com/file/d/… or a YouTube link"
             className="input flex-1"
             aria-label="Link URL"
           />
@@ -169,6 +181,19 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
             <Plus size={14} />
             Add
           </button>
+        </div>
+
+        {/* Drive is the recommended route for anything file-shaped, so say so
+            where the user is about to paste. */}
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-ink-700 bg-ink-900/60 p-3">
+          <HardDrive size={14} className="mt-0.5 shrink-0 text-brand-400" />
+          <div className="text-[11px] leading-relaxed text-slate-400">
+            <strong className="text-slate-300">Sharing a file? Use Google Drive.</strong> A Drive link has no size
+            limit, previews inline in Gmail, and lets you update the file later without resending. Sharing links are
+            cleaned up automatically, and an edit link gets converted to a view link.
+            <br />
+            <span className="text-amber-400/90">{DRIVE_PERMISSION_REMINDER}</span>
+          </div>
         </div>
 
         {reelLinks.length === 0 ? (

@@ -3,11 +3,11 @@
 /**
  * components/LeadTable.jsx
  * ---------------------------------------------------------------------------
- * The shared leads table, used by both the Lead Finder (Tab 1) and the
- * Campaign Dashboard (Tab 5).
+ * The shared leads table, used by both the Lead Finder and the Campaign
+ * Dashboard.
  *
  * Features:
- *   - Select-all / individual checkboxes (Tab 5 needs them; Tab 1 hides them).
+ *   - Select-all / individual checkboxes (the campaign needs them; the finder hides them).
  *   - Inline editing of every field — scraped data is a starting point, and a
  *     personalised first line is what makes cold outreach work.
  *   - Search, status filter, and column sorting.

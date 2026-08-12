@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * components/TemplateManager.jsx  —  Tab 2
+ * components/TemplateManager.jsx  —  "My templates" (Write message tab)
  * ---------------------------------------------------------------------------
  * Full CRUD over an unlimited number of e-mail templates, organised by tags.
  *
@@ -26,6 +26,7 @@ import {
   Tag,
   TriangleAlert,
   Type,
+  Wand2,
   X,
 } from 'lucide-react';
 import { Alert, Badge, Card, ConfirmButton, EmptyState, TextField } from './ui';
@@ -39,7 +40,7 @@ const SAMPLE_LEAD = {
   email: 'hello@studionoord.nl',
 };
 
-export default function TemplateManager({ templates, onTemplatesChange, campaign, sampleLead }) {
+export default function TemplateManager({ templates, onTemplatesChange, campaign, sampleLead, onStartWizard }) {
   const [selectedId, setSelectedId] = useState(templates[0]?.id || null);
   const [draft, setDraft] = useState(null);
   const [query, setQuery] = useState('');
@@ -304,10 +305,22 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
             icon={FileText}
             title="No template selected"
             action={
-              <button type="button" onClick={createTemplate} className="btn-primary btn-sm">
-                <FilePlus2 size={14} />
-                Create your first template
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                {onStartWizard && (
+                  <button type="button" onClick={onStartWizard} className="btn-primary btn-sm">
+                    <Wand2 size={14} />
+                    Write one for me
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={createTemplate}
+                  className={onStartWizard ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'}
+                >
+                  <FilePlus2 size={14} />
+                  Start from blank
+                </button>
+              </div>
             }
           >
             Templates support placeholders like <code className="text-brand-300">{'{{name}}'}</code> and{' '}
