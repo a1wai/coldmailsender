@@ -208,6 +208,7 @@ Every one is optional. Full annotated list in [`.env.example`](.env.example).
 | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `QSTASH_CALLBACK_BASE_URL` | Background queue |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Persist leads and campaign history |
 | `SCRAPER_RESPECT_ROBOTS`, `SCRAPER_TIMEOUT_MS`, `SCRAPER_MAX_PAGES`, `SCRAPER_USER_AGENT` | Crawler tuning |
+| `OVERPASS_ENDPOINTS` | Comma-separated Overpass mirrors, if the public ones keep timing out |
 
 The header shows a green badge for each integration it detects, so you can confirm a variable actually took effect.
 
@@ -385,6 +386,9 @@ Outbound SMTP is blocked on your network — common on corporate Wi-Fi and some 
 
 **Scraper finds no e-mail on a site that clearly has one**
 Usually a JavaScript-rendered page. Add a free Firecrawl key. It can also mean the address is inside an image or a contact form, in which case nothing will extract it — add it by hand.
+
+**"OpenStreetMap timed out"**
+The public Overpass instances are free, donation-funded and regularly overloaded — this is almost never a fault in your setup, and it usually clears within a minute. The app already tries three mirrors and remembers which one is answering. If it keeps happening: narrow the search area, point `OVERPASS_ENDPOINTS` at a different mirror, or set `GOOGLE_PLACES_API_KEY` so there is a second source that doesn't queue.
 
 **"Blocked by robots.txt"**
 The site asked crawlers to stay out of that path. Respect it, or visit the page yourself and add the address manually.

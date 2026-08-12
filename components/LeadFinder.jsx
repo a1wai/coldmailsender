@@ -94,7 +94,16 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
   const [draft, setDraft] = useState({ business: '', email: '', website: '', name: '' });
   const abortRef = useRef(false);
 
-  const update = (patch) => onSettingsChange({ ...settings, ...patch });
+  /**
+   * Functional, not `{ ...settings, ...patch }`.
+   *
+   * Picking a location fires two callbacks back to back — `onChange` with the
+   * place's full name, then `onSelect` with its coordinates. Spreading the
+   * `settings` captured by this render meant the second call rebuilt the patch
+   * from the *pre-change* value and silently threw away the first, so choosing
+   * "Troy, Michigan, United States" left the half-typed "troy" in the box.
+   */
+  const update = (patch) => onSettingsChange((current) => ({ ...current, ...patch }));
   const parsed = useMemo(() => parseUrlList(urlInput), [urlInput]);
 
   // Normalised here rather than at every use site: these come out of stored
@@ -332,15 +341,19 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <TextField
-            label="Keyword (optional)"
+            label="Word in the business name (optional)"
             value={settings.keyword || ''}
             onChange={(event) => update({ keyword: event.target.value })}
             disabled={Boolean(busy)}
             placeholder="e.g. boutique, dental, vegan"
             hint={
+              // Renamed from "Keyword" because people were describing the
+              // service they wanted ("renting house, buying new house")
+              // rather than naming a word businesses actually put in their
+              // sign — which matched nothing.
               settings.typeId
-                ? 'Narrows the chosen type to names containing this word.'
-                : 'Matches the business name.'
+                ? 'Matched against the business name, not what they do. Commas mean "or". Leave blank for all of them.'
+                : 'Matched against the business name. Commas mean "or".'
             }
           />
 
