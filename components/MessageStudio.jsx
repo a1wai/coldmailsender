@@ -67,7 +67,7 @@ export default function MessageStudio({
   return (
     <div className="flex flex-col gap-4">
       {/* Segmented control */}
-      <div className="flex flex-wrap gap-1 rounded-lg border border-ink-700 bg-ink-850 p-1">
+      <div className="glass flex flex-wrap gap-1 p-1.5">
         {SECTIONS.map((entry) => {
           const Icon = entry.icon;
           const isActive = section === entry.id;
@@ -78,8 +78,10 @@ export default function MessageStudio({
               type="button"
               onClick={() => setSection(entry.id)}
               aria-pressed={isActive}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:bg-ink-800 hover:text-slate-200'
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-brand-gradient text-white shadow-glow-sm'
+                  : 'text-slate-400 hover:bg-white/[0.06] hover:text-slate-100'
               }`}
             >
               <Icon size={14} />
@@ -87,7 +89,7 @@ export default function MessageStudio({
               {counts[entry.id] > 0 && (
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-ink-700 text-slate-400'
+                    isActive ? 'bg-white/20 text-white' : 'bg-white/[0.08] text-slate-400'
                   }`}
                 >
                   {counts[entry.id]}

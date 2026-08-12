@@ -25,6 +25,7 @@ import { jsonOk, jsonError, readJsonBody, rateLimit, clientKey } from '@/lib/htt
 import { isFirecrawlEnabled } from '@/lib/adapters/firecrawl';
 import { isQStashEnabled } from '@/lib/adapters/qstash';
 import { isSupabaseEnabled } from '@/lib/adapters/supabase';
+import { isAiExtractionEnabled } from '@/lib/ai-extract';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -108,6 +109,7 @@ export async function GET() {
       firecrawl: isFirecrawlEnabled(),
       qstash: isQStashEnabled(),
       supabase: isSupabaseEnabled(),
+      aiExtract: isAiExtractionEnabled(),
       postalAddress: Boolean(process.env.SENDER_POSTAL_ADDRESS),
       unsubscribe: Boolean(process.env.UNSUBSCRIBE_URL || process.env.UNSUBSCRIBE_EMAIL),
     },

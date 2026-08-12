@@ -270,7 +270,7 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
                     className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
                       isActive
                         ? 'border-brand-500/50 bg-brand-500/10'
-                        : 'border-transparent hover:border-ink-600 hover:bg-ink-800'
+                        : 'border-transparent hover:border-edge-strong hover:bg-white/[0.06]'
                     }`}
                   >
                     <span
@@ -284,7 +284,7 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
                     {(template.tags || []).length > 0 && (
                       <span className="mt-1.5 flex flex-wrap gap-1">
                         {template.tags.map((tag) => (
-                          <span key={tag} className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] text-slate-400">
+                          <span key={tag} className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-400">
                             {tag}
                           </span>
                         ))}
@@ -367,11 +367,11 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
 
                 <div>
                   <label className="label">Tags</label>
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-900 p-2">
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-edge bg-surface-sunken p-2">
                     {(draft.tags || []).map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded bg-ink-700 px-2 py-0.5 text-xs text-slate-300"
+                        className="inline-flex items-center gap-1 rounded bg-white/[0.08] px-2 py-0.5 text-xs text-slate-300"
                       >
                         <Tag size={9} />
                         {tag}
@@ -450,7 +450,7 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
               </div>
 
               {/* Placeholder palette */}
-              <div className="rounded-lg border border-ink-700 bg-ink-900/60 p-3">
+              <div className="rounded-lg border border-edge bg-surface-sunken/60 p-3">
                 <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-300">
                   <Type size={12} />
                   Insert a placeholder at the cursor
@@ -503,7 +503,7 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
               </span>
             }
           >
-            <div className="overflow-hidden rounded-lg border border-ink-700 bg-white">
+            <div className="overflow-hidden rounded-lg border border-edge bg-white">
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-wide text-slate-500">Subject</p>
                 <p className="mt-0.5 text-sm font-semibold text-slate-900">
@@ -544,7 +544,7 @@ function TagPill({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-        active ? 'bg-brand-500/20 text-brand-300' : 'bg-ink-700 text-slate-400 hover:bg-ink-600 hover:text-slate-200'
+        active ? 'bg-brand-500/20 text-brand-300' : 'bg-white/[0.08] text-slate-400 hover:bg-white/[0.12] hover:text-slate-200'
       }`}
     >
       {children}

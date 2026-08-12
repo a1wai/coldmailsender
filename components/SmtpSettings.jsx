@@ -30,6 +30,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Alert, Card, SelectField, Spinner, TextField, Toggle } from './ui';
+import DeliverabilityPanel from './DeliverabilityPanel';
 
 export default function SmtpSettings({
   smtp,
@@ -40,6 +41,8 @@ export default function SmtpSettings({
   onCampaignChange,
   serverStatus,
   onClearCredentials,
+  templates = [],
+  attachments = [],
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -211,7 +214,7 @@ export default function SmtpSettings({
         </div>
 
         {/* Storage choice */}
-        <div className="mt-5 rounded-lg border border-ink-700 bg-ink-900/60 p-3.5">
+        <div className="mt-5 rounded-lg border border-edge bg-surface-sunken/60 p-3.5">
           <Toggle
             checked={remember}
             onChange={onRememberChange}
@@ -245,7 +248,7 @@ export default function SmtpSettings({
         )}
 
         {/* Advanced SMTP */}
-        <div className="mt-5 border-t border-ink-700 pt-4">
+        <div className="mt-5 border-t border-edge pt-4">
           <button
             type="button"
             onClick={() => setShowAdvanced((current) => !current)}
@@ -345,6 +348,14 @@ export default function SmtpSettings({
           </Alert>
         )}
       </Card>
+
+      <DeliverabilityPanel
+        smtp={smtp}
+        serverStatus={serverStatus}
+        campaign={campaign}
+        templates={templates}
+        attachments={attachments}
+      />
 
       {/* ---------------------------------------------------- how it works */}
       <Card title="Where your password goes">

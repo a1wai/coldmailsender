@@ -337,7 +337,7 @@ export default function CampaignDashboard({
           />
         </div>
 
-        <div className="mt-4 grid gap-4 border-t border-ink-700 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-4 border-t border-edge pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <TextField
             label="Min delay (seconds)"
             type="number"
@@ -372,7 +372,7 @@ export default function CampaignDashboard({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-ink-700 bg-ink-900/60 px-4 py-3 text-xs">
+        <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-edge bg-surface-sunken/60 px-4 py-3 text-xs">
           <span className="inline-flex items-center gap-1.5 text-slate-400">
             <Gauge size={13} />
             {sendableLeads.length} recipient{sendableLeads.length === 1 ? '' : 's'} selected
@@ -468,7 +468,7 @@ export default function CampaignDashboard({
               {queueState === 'paused' && <Badge tone="warn">paused</Badge>}
             </div>
 
-            <div className="h-2 overflow-hidden rounded-full bg-ink-700">
+            <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
               <div
                 className={`h-full rounded-full transition-[width] duration-500 ${
                   stats.failed > 0 ? 'bg-gradient-to-r from-brand-500 to-amber-500' : 'bg-brand-500'
@@ -485,7 +485,7 @@ export default function CampaignDashboard({
             const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
             shouldAutoScrollRef.current = scrollHeight - scrollTop - clientHeight < 40;
           }}
-          className="h-64 overflow-y-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-xs"
+          className="h-64 overflow-y-auto rounded-lg border border-edge bg-void p-3 font-mono text-xs"
         >
           {log.length === 0 ? (
             <p className="flex h-full items-center justify-center text-slate-600">

@@ -30,7 +30,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react';
-import { Alert, Card, EmptyState, TextField } from './ui';
+import { Alert, Card, EmptyState, TextField, Toggle } from './ui';
 import LeadTable from './LeadTable';
 import LocationInput from './LocationInput';
 import { BUSINESS_TYPES } from '@/lib/business-types';
@@ -94,6 +94,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
               maxPages: settings.maxPages,
               respectRobots: settings.respectRobots,
               useFirecrawl: settings.useFirecrawl,
+              useAi: settings.useAi,
               industry: settings.industry,
               location: settings.location,
             },
@@ -354,7 +355,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
               </span>
               {progress.found > 0 && <span className="tabular-nums text-brand-300">{progress.found} found</span>}
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
               <div
                 className={`h-full rounded-full bg-brand-500 transition-[width] duration-300 ${
                   progress.phase === 'discovering' ? 'w-1/4 animate-pulse' : ''
@@ -374,6 +375,29 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
             {feedback.message}
           </Alert>
         )}
+
+        {/* Crawler options — collapsed visual weight, but the AI toggle is
+            worth surfacing because it changes what the crawl can find. */}
+        <div className="mt-5 grid gap-3 border-t border-edge-soft pt-4 sm:grid-cols-2">
+          <Toggle
+            checked={settings.respectRobots !== false}
+            onChange={(value) => update({ respectRobots: value })}
+            disabled={Boolean(busy)}
+            label="Respect robots.txt"
+            hint="Leave on unless you own the site or have permission to crawl it."
+          />
+          <Toggle
+            checked={Boolean(settings.useAi !== false && serverStatus?.aiExtract)}
+            onChange={(value) => update({ useAi: value })}
+            disabled={Boolean(busy) || !serverStatus?.aiExtract}
+            label="AI contact extraction"
+            hint={
+              serverStatus?.aiExtract
+                ? 'Claude reads each page and picks the right person — not just any address. Costs a fraction of a cent per site.'
+                : 'Set ANTHROPIC_API_KEY to enable. Paid, unlike the rest of the app.'
+            }
+          />
+        </div>
 
         <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
           Business data comes from OpenStreetMap, which is open data and free to query. Google Search and Maps results
@@ -545,7 +569,7 @@ function Collapsible({ open, onToggle, icon: Icon, title, subtitle, children }) 
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-ink-800/40"
+        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-white/[0.05]"
       >
         <Icon size={16} className="shrink-0 text-slate-500" />
         <span className="min-w-0 flex-1">
@@ -554,7 +578,7 @@ function Collapsible({ open, onToggle, icon: Icon, title, subtitle, children }) 
         </span>
         <ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && <div className="border-t border-ink-700 p-5">{children}</div>}
+      {open && <div className="border-t border-edge p-5">{children}</div>}
     </section>
   );
 }

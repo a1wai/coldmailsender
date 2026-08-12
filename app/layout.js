@@ -18,7 +18,7 @@ export const metadata = {
 };
 
 export const viewport = {
-  themeColor: '#08090f',
+  themeColor: '#07070c',
   width: 'device-width',
   initialScale: 1,
 };
@@ -26,7 +26,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-ink-950">{children}</body>
+      <body className="min-h-screen bg-void">{children}</body>
     </html>
   );
 }

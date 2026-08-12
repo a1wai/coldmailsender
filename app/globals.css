@@ -7,95 +7,155 @@
     color-scheme: dark;
   }
 
-  html,
-  body {
-    @apply bg-ink-950 text-slate-200 antialiased;
+  html {
+    scroll-behavior: smooth;
   }
 
-  /* Consistent focus ring across every interactive element. */
+  body {
+    @apply min-h-screen bg-void text-slate-300 antialiased;
+    /* Two soft accent washes behind everything. Fixed so they stay put while
+       the page scrolls, which is what keeps the glass panels reading as glass
+       rather than as flat translucent rectangles. */
+    background-image:
+      radial-gradient(900px 600px at 12% -8%, rgba(111, 92, 245, 0.16), transparent 60%),
+      radial-gradient(800px 500px at 92% 0%, rgba(45, 212, 191, 0.09), transparent 55%);
+    background-attachment: fixed;
+  }
+
   *:focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-ink-950;
+    @apply outline-none ring-2 ring-brand-400/70 ring-offset-2 ring-offset-void;
   }
 
   ::selection {
-    @apply bg-brand-500/30 text-white;
+    @apply bg-brand-500/35 text-white;
   }
 
-  /* Slim scrollbars — the log panel and lead table both scroll a lot. */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-ink-600;
+    @apply rounded-full;
+    background: rgba(255, 255, 255, 0.1);
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-ink-500;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* Autofill in Chrome paints an opaque near-white box that destroys a dark
+     form. There is no direct override, so shift the fill with a long inset
+     shadow and set the text colour separately. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #e2e8f0;
+    -webkit-box-shadow: 0 0 0 1000px #14151f inset;
+    caret-color: #e2e8f0;
+    transition: background-color 9999s ease-in-out 0s;
   }
 }
 
 @layer components {
+  /* ---------------------------------------------------------------- glass */
+
+  .glass {
+    @apply rounded-2xl border border-edge bg-surface shadow-glass backdrop-blur-xl;
+    background-image: theme('backgroundImage.surface-sheen');
+  }
+
   .card {
-    @apply rounded-xl border border-ink-700 bg-ink-850 shadow-lg shadow-black/20;
+    @apply glass overflow-hidden;
   }
 
   .card-header {
-    @apply flex flex-wrap items-center justify-between gap-3 border-b border-ink-700 px-5 py-4;
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-edge-soft px-5 py-4;
   }
 
   .card-body {
     @apply p-5;
   }
 
+  /* --------------------------------------------------------------- inputs */
+
   .label {
-    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400;
+    @apply mb-1.5 block text-xs font-medium tracking-wide text-slate-400;
   }
 
   .input {
-    @apply w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-slate-100
-      placeholder:text-slate-500 transition-colors
-      hover:border-ink-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
-      disabled:cursor-not-allowed disabled:opacity-50;
+    @apply w-full rounded-xl border border-edge bg-surface-sunken/80 px-3.5 py-2.5 text-sm text-slate-100
+      placeholder:text-slate-600 transition-all duration-150
+      hover:border-edge-strong
+      focus:border-brand-400/60 focus:bg-surface-sunken focus:outline-none focus:ring-4 focus:ring-brand-500/15
+      disabled:cursor-not-allowed disabled:opacity-45;
   }
 
+  /* --------------------------------------------------------------- buttons */
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
-      transition-all disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      transition-all duration-150 active:scale-[0.98]
+      disabled:pointer-events-none disabled:opacity-40 disabled:active:scale-100;
   }
 
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-500 active:bg-brand-700;
+    @apply btn border border-brand-400/30 bg-brand-gradient text-white shadow-glow-sm
+      hover:brightness-110 hover:shadow-glow;
   }
 
   .btn-secondary {
-    @apply btn border border-ink-600 bg-ink-800 text-slate-200 hover:border-ink-500 hover:bg-ink-700;
+    @apply btn border border-edge bg-white/[0.04] text-slate-200 backdrop-blur-sm
+      hover:border-edge-strong hover:bg-white/[0.08] hover:text-white;
   }
 
   .btn-ghost {
-    @apply btn text-slate-400 hover:bg-ink-800 hover:text-slate-200;
+    @apply btn text-slate-400 hover:bg-white/[0.06] hover:text-slate-100;
   }
 
   .btn-danger {
-    @apply btn border border-red-900/60 bg-red-950/40 text-red-300 hover:border-red-700 hover:bg-red-900/40;
+    @apply btn border border-red-500/25 bg-red-500/10 text-red-300
+      hover:border-red-500/45 hover:bg-red-500/20 hover:text-red-200;
   }
 
   .btn-sm {
-    @apply px-2.5 py-1.5 text-xs;
+    @apply rounded-lg px-3 py-1.5 text-xs;
   }
 
+  /* ---------------------------------------------------------------- chrome */
+
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-md border border-ink-600 bg-ink-800 px-2 py-1
-      font-mono text-xs text-brand-300 transition-colors hover:border-brand-500 hover:text-brand-200;
+    @apply inline-flex items-center gap-1 rounded-lg border border-edge bg-white/[0.04] px-2 py-1
+      font-mono text-xs text-brand-300 transition-all
+      hover:border-brand-400/40 hover:bg-brand-500/10 hover:text-brand-200 active:scale-95;
   }
 
   .table-cell {
     @apply px-3 py-2.5 text-sm;
+  }
+
+  /* A thin gradient rule, used to separate major regions without a hard line. */
+  .rule {
+    @apply h-px w-full border-0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  }
+}
+
+@layer utilities {
+  /* Respect the OS setting — the campaign log and progress bars animate a lot. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

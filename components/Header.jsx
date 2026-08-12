@@ -27,12 +27,12 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
 
   return (
     // Positioning is owned by the sticky wrapper in app/page.js.
-    <header className="border-b border-ink-700 bg-ink-950/95 backdrop-blur-md">
+    <header className="border-b border-edge-soft bg-void/70 backdrop-blur-2xl">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
         {/* Brand */}
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg shadow-brand-900/40">
-            <Send size={17} className="text-white" />
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-gradient shadow-glow">
+            <Send size={18} className="text-white" />
           </div>
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold leading-tight text-white">
@@ -63,7 +63,7 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
                   <span
                     key={key}
                     title={`${label} is configured server-side`}
-                    className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-300"
+                    className="inline-flex items-center gap-1 rounded-lg border border-mint-400/25 bg-mint-500/10 px-2 py-1 text-[11px] font-medium text-mint-300"
                   >
                     <Icon size={11} />
                     {label}
@@ -74,7 +74,7 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
 
           {/* Daily quota */}
           <div
-            className="flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5"
+            className="flex items-center gap-2 rounded-xl border border-edge bg-white/[0.04] px-3 py-1.5 backdrop-blur-sm"
             title={`Gmail allows ${GMAIL_DAILY_LIMIT} messages/day on a free account (2,000 on Workspace). Counted locally in this browser.`}
           >
             <div className="text-right">
@@ -84,7 +84,7 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
                 <span className="font-normal text-slate-500"> / {GMAIL_DAILY_LIMIT}</span>
               </div>
             </div>
-            <div className="h-7 w-px bg-ink-700" />
+            <div className="h-7 w-px bg-edge" />
             <Badge tone={quotaTone}>{remaining} left</Badge>
           </div>
 
@@ -122,7 +122,7 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
       </div>
 
       {/* Storage-location reminder — users need to know data is browser-local. */}
-      <div className="border-t border-ink-800 bg-ink-900/50">
+      <div className="border-t border-edge-soft bg-white/[0.02]">
         <div className="mx-auto flex max-w-7xl items-center gap-1.5 px-4 py-1.5 text-[11px] text-slate-500 sm:px-6">
           <HardDriveDownload size={11} className="shrink-0" />
           <span>

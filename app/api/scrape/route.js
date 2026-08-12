@@ -24,6 +24,7 @@
 
 import { scrapeSites, extractEmails, extractBusinessName, extractPersonName } from '@/lib/scraper';
 import { scrapeWithFirecrawl, firecrawlToHtml, isFirecrawlEnabled } from '@/lib/adapters/firecrawl';
+import { extractContactWithAi, isAiExtractionEnabled } from '@/lib/ai-extract';
 import { jsonOk, jsonError, readJsonBody, rateLimit, clientKey } from '@/lib/http';
 
 // The scraper needs `node:dns` and `node:net`, so the Edge runtime is out.
@@ -93,6 +94,15 @@ export async function POST(request) {
       await retryMissesWithFirecrawl(results);
     }
 
+    // Third pass: let Claude read the crawled text. It resolves the cases the
+    // regex cannot — several addresses on one page, a name that belongs to an
+    // address only by proximity, or an address written out in words.
+    const wantsAi = options.useAi !== false && isAiExtractionEnabled();
+    let aiImproved = 0;
+    if (wantsAi) {
+      aiImproved = await refineWithAi(results);
+    }
+
     const leads = results.map((result, index) => ({
       id: `lead_${Date.now()}_${index}`,
       name: result.name || '',
@@ -100,10 +110,12 @@ export async function POST(request) {
       website: result.website || cleanUrls[index] || '',
       email: result.email || '',
       alternateEmails: (result.emails || []).slice(1, 5),
+      role: result.role || '',
+      confidence: result.confidence || null,
       status: result.email ? 'new' : 'no-email',
       industry: options.industry || '',
       location: options.location || '',
-      source: result.viaFirecrawl ? 'firecrawl' : 'scraper',
+      source: result.viaAi ? 'ai' : result.viaFirecrawl ? 'firecrawl' : 'scraper',
       pagesVisited: result.pagesVisited?.length || 0,
       error: result.error || null,
       customFields: {},
@@ -119,6 +131,8 @@ export async function POST(request) {
         failed: cleanUrls.length - withEmail,
         durationMs: Date.now() - startedAt,
         firecrawlUsed: wantsFirecrawl,
+        aiUsed: wantsAi,
+        aiImproved,
       },
     });
   } catch (error) {
@@ -162,4 +176,62 @@ async function retryMissesWithFirecrawl(results) {
       if (/credits|quota|key/i.test(error.message)) break;
     }
   }
+}
+
+
+/**
+ * Runs the optional Claude extraction over each crawled site and applies the
+ * result when it is an improvement. Mutates `results` in place.
+ *
+ * "Improvement" is deliberately conservative: a found address where there was
+ * none, a *different* address the model justified, or a contact name the
+ * crawler could not attach. Anything else leaves the crawler's answer alone.
+ *
+ * @returns {Promise<number>} how many sites the AI pass improved
+ */
+async function refineWithAi(results) {
+  let improved = 0;
+
+  for (const result of results) {
+    if (!result.pageTexts?.length) continue;
+    if (/robots\.txt/i.test(result.error || '')) continue;
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const ai = await extractContactWithAi({
+        website: result.website,
+        pageTexts: result.pageTexts,
+        candidateEmails: result.emails || [],
+      });
+
+      if (!ai) continue;
+
+      const foundNew = ai.email && !result.email;
+      const chosenDifferently = ai.email && result.email && ai.email !== result.email && ai.confidence !== 'low';
+      const addedName = ai.name && !result.name;
+
+      if (foundNew || chosenDifferently) {
+        // Keep the crawler's other finds as alternates rather than discarding.
+        result.emails = [ai.email, ...(result.emails || []).filter((email) => email !== ai.email)];
+        result.email = ai.email;
+        result.error = null;
+        result.viaAi = true;
+        improved += 1;
+      }
+
+      if (addedName) {
+        result.name = ai.name;
+        result.viaAi = true;
+        if (!foundNew && !chosenDifferently) improved += 1;
+      }
+
+      if (ai.role && !result.role) result.role = ai.role;
+      if (ai.business && !result.business) result.business = ai.business;
+      if (result.viaAi) result.confidence = ai.confidence;
+    } catch {
+      // The crawler's result stands.
+    }
+  }
+
+  return improved;
 }

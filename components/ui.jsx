@@ -96,10 +96,10 @@ export function SelectField({ label, hint, error, className, children, ...props 
 }
 
 const ALERT_STYLES = {
-  info: { wrap: 'border-brand-500/30 bg-brand-500/10 text-brand-200', Icon: Info },
-  success: { wrap: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200', Icon: Check },
-  warn: { wrap: 'border-amber-500/30 bg-amber-500/10 text-amber-200', Icon: AlertTriangle },
-  error: { wrap: 'border-red-500/30 bg-red-500/10 text-red-200', Icon: XCircle },
+  info: { wrap: 'border-brand-400/25 bg-brand-500/[0.12] text-brand-200', Icon: Info },
+  success: { wrap: 'border-mint-400/25 bg-mint-500/[0.12] text-mint-300', Icon: Check },
+  warn: { wrap: 'border-amber-400/25 bg-amber-500/[0.12] text-amber-200', Icon: AlertTriangle },
+  error: { wrap: 'border-red-400/25 bg-red-500/[0.12] text-red-200', Icon: XCircle },
 };
 
 export function Alert({ tone = 'info', title, children, onDismiss, className = '' }) {
@@ -108,7 +108,7 @@ export function Alert({ tone = 'info', title, children, onDismiss, className = '
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
-      className={`flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm animate-fade-in ${wrap} ${className}`}
+      className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm backdrop-blur-sm animate-fade-in ${wrap} ${className}`}
     >
       <Icon size={16} className="mt-0.5 shrink-0" />
       <div className="min-w-0 flex-1">
@@ -125,11 +125,11 @@ export function Alert({ tone = 'info', title, children, onDismiss, className = '
 }
 
 const BADGE_TONES = {
-  neutral: 'bg-ink-700 text-slate-300',
-  brand: 'bg-brand-500/15 text-brand-300',
-  success: 'bg-emerald-500/15 text-emerald-300',
-  warn: 'bg-amber-500/15 text-amber-300',
-  error: 'bg-red-500/15 text-red-300',
+  neutral: 'border-edge bg-white/[0.06] text-slate-300',
+  brand: 'border-brand-400/25 bg-brand-500/15 text-brand-300',
+  success: 'border-mint-400/25 bg-mint-500/15 text-mint-300',
+  warn: 'border-amber-400/25 bg-amber-500/15 text-amber-300',
+  error: 'border-red-400/25 bg-red-500/15 text-red-300',
 };
 
 export function Badge({ tone = 'neutral', children, className = '' }) {
@@ -138,10 +138,10 @@ export function Badge({ tone = 'neutral', children, className = '' }) {
 
 export function EmptyState({ icon: Icon, title, children, action }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
       {Icon && (
-        <div className="mb-3 rounded-full border border-ink-700 bg-ink-800 p-3">
-          <Icon size={22} className="text-slate-500" />
+        <div className="mb-4 rounded-2xl border border-edge bg-white/[0.04] p-4 shadow-glass backdrop-blur-sm">
+          <Icon size={24} className="text-brand-300/70" />
         </div>
       )}
       <p className="text-sm font-medium text-slate-300">{title}</p>
@@ -155,33 +155,50 @@ export function Spinner({ size = 15, className = '' }) {
   return <Loader2 size={size} className={`animate-spin ${className}`} aria-hidden="true" />;
 }
 
-export function Toggle({ checked, onChange, label, hint, disabled }) {
-  const id = useId();
+/**
+ * A switch. The whole row is one `<button role="switch">` rather than a switch
+ * plus a `<label for>` pointing at it — a label only reliably forwards clicks
+ * to native form controls, so the text half of the old version was a dead zone
+ * in some browsers. One element also means one focus ring and one hit target.
+ *
+ * The knob geometry is explicit (`left-0.5` + a measured `translate-x`) because
+ * the previous version travelled by a rounded Tailwind step and came to rest
+ * 4px from the right edge while sitting 2px from the left.
+ */
+export function Toggle({ checked, onChange, label, hint, disabled, className = '' }) {
+  const isOn = Boolean(checked);
 
   return (
-    <div className="flex items-start gap-3">
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-          checked ? 'bg-brand-600' : 'bg-ink-600'
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isOn}
+      disabled={disabled}
+      onClick={() => onChange(!isOn)}
+      className={`group flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors
+        ${disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/[0.03]'} ${className}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`relative mt-0.5 h-[22px] w-[40px] shrink-0 rounded-full border transition-all duration-200 ${
+          isOn
+            ? 'border-brand-400/40 bg-brand-gradient shadow-glow-sm'
+            : 'border-edge bg-white/[0.07] group-hover:bg-white/[0.11]'
         }`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-4' : 'translate-x-0.5'
-          }`}
+          className={`absolute left-0.5 top-1/2 h-[16px] w-[16px] -translate-y-1/2 rounded-full bg-white
+            shadow-sm transition-transform duration-200 ease-out ${isOn ? 'translate-x-[18px]' : 'translate-x-0'}`}
         />
-      </button>
-      <label htmlFor={id} className="cursor-pointer select-none">
-        <span className="block text-sm text-slate-200">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-slate-500">{hint}</span>}
-      </label>
-    </div>
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm transition-colors ${isOn ? 'text-slate-100' : 'text-slate-300'}`}>
+          {label}
+        </span>
+        {hint && <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{hint}</span>}
+      </span>
+    </button>
   );
 }
 
