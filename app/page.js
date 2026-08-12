@@ -3,12 +3,13 @@
 /**
  * app/page.js
  * ---------------------------------------------------------------------------
- * The whole console: header, five tabs, and the shared state they operate on.
+ * The whole console: header, four tabs, and the shared state they operate on.
  *
  * State is deliberately lifted here rather than scattered across the tabs,
- * because almost every piece of it crosses tab boundaries — the scraper's
+ * because almost every piece of it crosses tab boundaries — the lead search's
  * industry/location fill template placeholders, the active reel link is chosen
- * in Tab 3 and rendered in Tab 5, and the leads table is shared outright.
+ * while writing and rendered while sending, and the leads table is shared
+ * outright between finding and sending.
  *
  * Persistence rules (see `lib/storage.js`):
  *   - Leads, templates, links, settings → localStorage.
@@ -18,12 +19,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileText, Mail, Paperclip, Radar, Send } from 'lucide-react';
+import { FileText, Mail, Radar, Send } from 'lucide-react';
 
 import Header from '@/components/Header';
 import LeadFinder from '@/components/LeadFinder';
-import TemplateManager from '@/components/TemplateManager';
-import AttachmentManager from '@/components/AttachmentManager';
+import MessageStudio from '@/components/MessageStudio';
 import SmtpSettings from '@/components/SmtpSettings';
 import CampaignDashboard from '@/components/CampaignDashboard';
 import { Alert } from '@/components/ui';
@@ -44,18 +44,25 @@ import {
 import { createDefaultTemplates } from '@/lib/templates';
 import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@/lib/constants';
 
+/**
+ * Four tabs, in the order the work actually happens: find leads → write the
+ * message → send it. Credentials sit last because they are configured once and
+ * then forgotten.
+ */
 const TABS = [
-  { id: 'leads', label: 'Lead Finder', icon: Radar },
-  { id: 'templates', label: 'Templates', icon: FileText },
-  { id: 'attachments', label: 'Attachments & Links', icon: Paperclip },
-  { id: 'credentials', label: 'Credentials', icon: Mail },
-  { id: 'campaign', label: 'Campaign', icon: Send },
+  { id: 'leads', label: 'Find leads', icon: Radar },
+  { id: 'message', label: 'Write message', icon: FileText },
+  { id: 'campaign', label: 'Send', icon: Send },
+  { id: 'credentials', label: 'Settings', icon: Mail },
 ];
 
 const DEFAULT_SCRAPER_SETTINGS = {
-  industry: '',
-  location: '',
+  typeId: '',
   keywords: '',
+  location: '',
+  place: null,        // { lat, lon, short, boundingbox } once picked from suggestions
+  radius: 5000,
+  industry: '',
   maxPages: 4,
   respectRobots: true,
   useFirecrawl: true,
@@ -216,24 +223,26 @@ export default function Home() {
 
   const tabCounts = {
     leads: leads.length,
-    templates: templates.length,
-    attachments: attachments.length + reelLinks.length,
-    credentials: null,
+    message: templates.length,
     campaign: leads.filter((lead) => lead.email).length,
+    credentials: null,
   };
 
   return (
     <div className="min-h-screen">
-      <Header
-        sentToday={sentToday}
-        serverStatus={serverStatus}
-        onExportBackup={exportBackup}
-        onImportBackup={importBackup}
-      />
+      {/* Header and tabs are one sticky unit. Previously the tab bar carried its
+          own `top-[73px]`, which drifted out of sync with the header's real
+          height and overlapped it on scroll. */}
+      <div className="sticky top-0 z-30">
+        <Header
+          sentToday={sentToday}
+          serverStatus={serverStatus}
+          onExportBackup={exportBackup}
+          onImportBackup={importBackup}
+        />
 
-      {/* Tab bar */}
-      <nav className="sticky top-[73px] z-20 border-b border-ink-700 bg-ink-900/80 backdrop-blur-md" aria-label="Sections">
-        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
+        <nav className="border-b border-ink-700 bg-ink-900/90 backdrop-blur-md" aria-label="Sections">
+          <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
           {TABS.map((tab, index) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -251,13 +260,16 @@ export default function Home() {
                     : 'border-transparent text-slate-400 hover:border-ink-600 hover:text-slate-200'
                 }`}
               >
-                <span
-                  className={`grid h-5 w-5 place-items-center rounded text-[10px] font-semibold ${
-                    isActive ? 'bg-brand-500/20 text-brand-300' : 'bg-ink-700 text-slate-500'
-                  }`}
-                >
-                  {index + 1}
-                </span>
+                {/* Settings isn't a step in the flow, so it doesn't get a number. */}
+                {tab.id !== 'credentials' && (
+                  <span
+                    className={`grid h-5 w-5 place-items-center rounded text-[10px] font-semibold ${
+                      isActive ? 'bg-brand-500/20 text-brand-300' : 'bg-ink-700 text-slate-500'
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                )}
                 <Icon size={14} />
                 <span className="whitespace-nowrap">{tab.label}</span>
                 {count > 0 && (
@@ -268,8 +280,9 @@ export default function Home() {
               </button>
             );
           })}
-        </div>
-      </nav>
+          </div>
+        </nav>
+      </div>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {notice && (
@@ -288,23 +301,18 @@ export default function Home() {
           />
         )}
 
-        {activeTab === 'templates' && (
-          <TemplateManager
+        {activeTab === 'message' && (
+          <MessageStudio
             templates={templates}
             onTemplatesChange={setTemplates}
-            campaign={campaignWithContext}
-            sampleLead={sampleLead}
-          />
-        )}
-
-        {activeTab === 'attachments' && (
-          <AttachmentManager
             attachments={attachments}
             onAttachmentsChange={setAttachments}
             reelLinks={reelLinks}
             onReelLinksChange={setReelLinks}
-            campaign={campaign}
+            campaign={campaignWithContext}
             onCampaignChange={setCampaign}
+            sampleLead={sampleLead}
+            scraperSettings={scraperSettings}
           />
         )}
 

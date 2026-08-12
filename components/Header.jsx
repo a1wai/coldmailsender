@@ -26,7 +26,8 @@ export default function Header({ sentToday = 0, serverStatus = null, onExportBac
   ];
 
   return (
-    <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-950/85 backdrop-blur-md">
+    // Positioning is owned by the sticky wrapper in app/page.js.
+    <header className="border-b border-ink-700 bg-ink-950/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
         {/* Brand */}
         <div className="flex min-w-0 items-center gap-3">
