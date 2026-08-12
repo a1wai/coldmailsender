@@ -173,7 +173,7 @@ export default function LocationInput({ value, selected, onChange, onSelect, dis
         <ul
           id="location-suggestions"
           role="listbox"
-          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-ink-600 bg-ink-800 py-1 shadow-2xl shadow-black/50"
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-edge bg-white/[0.05] py-1 shadow-2xl shadow-black/50"
         >
           {suggestions.map((place, index) => (
             <li key={`${place.lat},${place.lon}`} role="option" aria-selected={index === highlighted}>
@@ -182,7 +182,7 @@ export default function LocationInput({ value, selected, onChange, onSelect, dis
                 onMouseEnter={() => setHighlighted(index)}
                 onClick={() => choose(place)}
                 className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors ${
-                  index === highlighted ? 'bg-brand-500/15' : 'hover:bg-ink-700'
+                  index === highlighted ? 'bg-brand-500/15' : 'hover:bg-white/[0.09]'
                 }`}
               >
                 <MapPin size={13} className="mt-0.5 shrink-0 text-slate-500" />

@@ -241,7 +241,7 @@ export default function Home() {
           onImportBackup={importBackup}
         />
 
-        <nav className="border-b border-ink-700 bg-ink-900/90 backdrop-blur-md" aria-label="Sections">
+        <nav className="border-b border-edge-soft bg-void/60 backdrop-blur-2xl" aria-label="Sections">
           <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
           {TABS.map((tab, index) => {
             const Icon = tab.icon;
@@ -254,17 +254,17 @@ export default function Home() {
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`relative flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                className={`relative my-2 flex shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-all ${
                   isActive
-                    ? 'border-brand-500 text-brand-300'
-                    : 'border-transparent text-slate-400 hover:border-ink-600 hover:text-slate-200'
+                    ? 'border-brand-400/30 bg-brand-500/15 text-brand-200 shadow-glow-sm'
+                    : 'border-transparent text-slate-400 hover:bg-white/[0.05] hover:text-slate-200'
                 }`}
               >
                 {/* Settings isn't a step in the flow, so it doesn't get a number. */}
                 {tab.id !== 'credentials' && (
                   <span
-                    className={`grid h-5 w-5 place-items-center rounded text-[10px] font-semibold ${
-                      isActive ? 'bg-brand-500/20 text-brand-300' : 'bg-ink-700 text-slate-500'
+                    className={`grid h-5 w-5 place-items-center rounded-md text-[10px] font-semibold transition-colors ${
+                      isActive ? 'bg-brand-500/30 text-brand-100' : 'bg-white/[0.07] text-slate-500'
                     }`}
                   >
                     {index + 1}
@@ -273,7 +273,7 @@ export default function Home() {
                 <Icon size={14} />
                 <span className="whitespace-nowrap">{tab.label}</span>
                 {count > 0 && (
-                  <span className="rounded-full bg-ink-700 px-1.5 py-0.5 text-[10px] tabular-nums text-slate-400">
+                  <span className="rounded-full border border-edge bg-white/[0.06] px-1.5 py-0.5 text-[10px] tabular-nums text-slate-400">
                     {count}
                   </span>
                 )}
@@ -326,6 +326,8 @@ export default function Home() {
             onCampaignChange={setCampaign}
             serverStatus={serverStatus}
             onClearCredentials={clearCredentials}
+            templates={templates}
+            attachments={attachments}
           />
         )}
 
@@ -345,7 +347,7 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="mt-8 border-t border-ink-800 py-6">
+      <footer className="mt-10 border-t border-edge-soft py-8">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 text-xs text-slate-500 sm:px-6">
           <p>
             Cold Email Sender — built by{' '}

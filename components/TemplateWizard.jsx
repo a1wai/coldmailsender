@@ -210,7 +210,7 @@ export default function TemplateWizard({ onCreate, campaign, sampleLead, default
         </div>
 
         {/* Actions */}
-        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-ink-700 pt-4">
+        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-edge pt-4">
           <button type="button" onClick={generateLocally} disabled={!canGenerate} className="btn-primary">
             <Wand2 size={15} />
             {preview && source === 'builtin' ? 'Regenerate' : 'Build template'}
@@ -276,7 +276,7 @@ export default function TemplateWizard({ onCreate, campaign, sampleLead, default
             </>
           }
         >
-          <div className="overflow-hidden rounded-lg border border-ink-700 bg-white">
+          <div className="overflow-hidden rounded-lg border border-edge bg-white">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-[11px] uppercase tracking-wide text-slate-500">Subject</p>
               <p className="mt-0.5 text-sm font-semibold text-slate-900">{rendered?.subject}</p>

@@ -185,7 +185,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
 
         {/* Drive is the recommended route for anything file-shaped, so say so
             where the user is about to paste. */}
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-ink-700 bg-ink-900/60 p-3">
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-edge bg-surface-sunken/60 p-3">
           <HardDrive size={14} className="mt-0.5 shrink-0 text-brand-400" />
           <div className="text-[11px] leading-relaxed text-slate-400">
             <strong className="text-slate-300">Sharing a file? Use Google Drive.</strong> A Drive link has no size
@@ -211,7 +211,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
                 <li
                   key={link.id}
                   className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-                    isActive ? 'border-brand-500/50 bg-brand-500/[0.08]' : 'border-ink-700 bg-ink-900/50'
+                    isActive ? 'border-brand-500/50 bg-brand-500/[0.08]' : 'border-edge bg-surface-sunken/50'
                   }`}
                 >
                   <button
@@ -293,7 +293,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
           className={`relative rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-            isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-ink-600 bg-ink-900/40 hover:border-ink-500'
+            isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-edge bg-surface-sunken/40 hover:border-edge-strong'
           }`}
         >
           <input
@@ -325,7 +325,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
               </span>
               <span className={percentUsed > 85 ? 'text-amber-400' : 'text-slate-500'}>{percentUsed}% of budget</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
               <div
                 className={`h-full rounded-full transition-all ${percentUsed > 85 ? 'bg-amber-500' : 'bg-brand-500'}`}
                 style={{ width: `${percentUsed}%` }}
@@ -336,7 +336,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
               {attachments.map((file) => (
                 <li
                   key={file.id}
-                  className="flex items-center gap-3 rounded-lg border border-ink-700 bg-ink-900/50 px-3 py-2"
+                  className="flex items-center gap-3 rounded-lg border border-edge bg-surface-sunken/50 px-3 py-2"
                 >
                   <Paperclip size={14} className="shrink-0 text-slate-500" />
                   <div className="min-w-0 flex-1">
@@ -382,7 +382,7 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
 
       {/* Quick sanity summary */}
       {(attachments.length > 0 || campaign.reelLink) && (
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-ink-700 bg-ink-850 px-4 py-3 text-xs text-slate-400">
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-edge bg-surface-solid/70 px-4 py-3 text-xs text-slate-400">
           <span className="inline-flex items-center gap-1.5">
             <CheckCircle2 size={13} className="text-emerald-400" />
             Ready to attach to every send:

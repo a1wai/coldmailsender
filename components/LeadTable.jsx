@@ -149,10 +149,10 @@ export default function LeadTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-ink-700">
+      <div className="overflow-x-auto rounded-xl border border-edge bg-surface-sunken/40">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-ink-700 bg-ink-800/60">
+            <tr className="border-b border-edge bg-white/[0.03]">
               {showSelection && (
                 <th scope="col" className="w-10 px-3 py-2.5">
                   <input
@@ -199,8 +199,8 @@ export default function LeadTable({
               return (
                 <tr
                   key={lead.id}
-                  className={`border-b border-ink-800 transition-colors last:border-0 ${
-                    isSelected ? 'bg-brand-500/[0.07]' : 'hover:bg-ink-800/40'
+                  className={`border-b border-edge-soft transition-colors last:border-0 ${
+                    isSelected ? 'bg-brand-500/[0.1]' : 'hover:bg-white/[0.03]'
                   }`}
                 >
                   {showSelection && (
@@ -251,7 +251,7 @@ export default function LeadTable({
                             onClick={() => onUpdateLead && setEditing(cellKey)}
                             title={onUpdateLead ? 'Click to edit' : undefined}
                             className={`min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left transition-colors ${
-                              onUpdateLead && !disabled ? 'hover:bg-ink-700' : 'cursor-default'
+                              onUpdateLead && !disabled ? 'hover:bg-white/[0.09]' : 'cursor-default'
                             } ${value ? 'text-slate-200' : 'text-slate-600 italic'}`}
                           >
                             {column.key === 'website' && value
@@ -329,8 +329,8 @@ function FilterPill({ active, onClick, children }) {
       onClick={onClick}
       className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
         active
-          ? 'border-brand-500/40 bg-brand-500/15 text-brand-300'
-          : 'border-ink-600 bg-ink-800 text-slate-400 hover:border-ink-500 hover:text-slate-200'
+          ? 'border-brand-400/40 bg-brand-500/15 text-brand-200'
+          : 'border-edge bg-white/[0.04] text-slate-400 hover:border-edge-strong hover:bg-white/[0.07] hover:text-slate-200'
       }`}
     >
       {children}

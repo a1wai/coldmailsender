@@ -37,11 +37,13 @@ Pick a business type and a place, press **Find leads**. That's the whole interac
 Behind it, two steps run back to back with live progress:
 
 1. **OpenStreetMap** is queried for real businesses of that type in that area — name, website, phone, address, and for a useful minority an e-mail already published in the map data.
-2. Every business that has a website but no address gets **crawled** for one.
+2. Every business that has a website but no address gets **crawled** for one. The crawler follows contact, team, about and imprint pages (in several languages), falls back to the sitemap when a site's navigation is JavaScript-rendered, and pairs each address with the **person and job title** sitting next to it — so you get "Sarah Jansen, Studio Manager" rather than a bare `info@`.
 
 The location field autocompletes as you type (also OpenStreetMap), so "Troy" resolves to the right Troy and the search radius is sized to the place rather than guessed.
 
 There's a single **Open Google Maps** button for eyeballing an area yourself, an **Add a lead by hand** form, and a **Paste website URLs** box for a list you already have. The `Name` column falls back to the domain when no person is found — `intoworld.com` becomes `Intoworld` — so every row is usable in a template.
+
+With `ANTHROPIC_API_KEY` set, a third pass has Claude read the crawled pages and pick the *right* contact: it resolves which of six addresses on a page belongs to a decision-maker, skips `careers@`/`press@`/`legal@`, attaches names the markup never linked, and reads addresses written out as "sarah dot jansen at studio dot nl". Any address it returns is checked against the source text before being accepted, so it cannot invent one. This pass is paid — the crawler works without it.
 
 > The app does **not** scrape Google Search or Maps results. Their Terms of Service prohibit it and they block it in practice, so anything built on it breaks within days. OpenStreetMap data is ODbL-licensed and explicitly meant to be queried, which is why it's the automated path here.
 
@@ -79,6 +81,22 @@ Select recipients, pick a template, set the delay range, and run it. You get pre
 ### 4. Settings
 
 Gmail address, sender name, and 16-character app password, with **Test Connection** (authenticates without sending) and **Send test to myself** (delivers one real message to your own address). Any SMTP provider works — the advanced panel exposes host, port and encryption, so Zoho, Brevo, Mailgun and Resend all drop in. The compliance footer settings (postal address, unsubscribe URL) live here too.
+
+It also holds the **deliverability check** — see below.
+
+### Why your mail goes to spam
+
+The Settings tab has a **Deliverability check** that answers this with evidence rather than advice. It does two things:
+
+**Looks up your domain's authentication.** SPF, DKIM, DMARC and MX, with the exact record to add when one is missing. This is usually the real answer — since February 2024 Gmail and Yahoo require all three from bulk senders, and mail without them is throttled or rejected regardless of how well it is written. A lookup that fails is reported as *unknown*, never as "missing", because publishing a second SPF record breaks SPF entirely.
+
+**Scans your template.** Spam-trigger phrasing, ALL CAPS, exclamation marks, link count, URL shorteners, attachments, missing opt-out, fake `Re:` prefixes.
+
+The single most common cause it finds: **sending from `@gmail.com`**. A free mailbox cannot be authenticated as yours and carries the shared reputation of everyone else using it. Your own domain behind Google Workspace (~$7/month) fixes more than every content tweak combined.
+
+The app also does its part automatically — no tracking pixels, no image-heavy HTML, a plain-text alternative on every message, `List-Unsubscribe` headers, paced sending, and the `X-Mailer` header nodemailer normally stamps on outgoing mail is turned off, since it is a bulk-sender fingerprint that appears on almost nothing a human sends.
+
+No tool can promise inbox placement — reputation is built over weeks of people wanting your mail. The check covers the part you control.
 
 ## Quick start
 
@@ -151,7 +169,7 @@ Every one is optional. Full annotated list in [`.env.example`](.env.example).
 | `SMTP_USER`, `SMTP_PASS` | Server-side credentials, so the browser never holds your password |
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Display name and an alternate reply address |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Non-Gmail providers (defaults: `smtp.gmail.com`, `465`, `true`) |
-| `ANTHROPIC_API_KEY` | Adds the "Write it with Claude" button to the template wizard — **paid**, see below |
+| `ANTHROPIC_API_KEY` | Enables AI contact extraction in the crawler and the "Write it with Claude" button — **paid**, see below |
 | `SENDER_POSTAL_ADDRESS` | Physical address for the footer — legally required for commercial mail |
 | `UNSUBSCRIBE_EMAIL`, `UNSUBSCRIBE_URL` | Opt-out targets; also populate the `List-Unsubscribe` header |
 | `FIRECRAWL_API_KEY` | Enables the JS-rendering scraper fallback |
@@ -167,9 +185,12 @@ The header shows a green badge for each integration it detects, so you can confi
 
 All three are genuinely optional. The app is fully functional with none of them.
 
-### Claude — better template wording (paid, and the only one)
+### Claude — smarter crawling and better wording (paid, and the only one)
 
-The template wizard already works with no key: it assembles templates locally, instantly, for free. A key adds a second button that hands the same answers to Claude and gets fresher wording back.
+Two features switch on with a key:
+
+- **AI contact extraction.** After the crawler runs, Claude reads the page text and picks the best contact — resolving which address belongs to a decision-maker, attaching names and job titles, and reading addresses that are spelled out to defeat scrapers. Every address it returns is verified against the source text first. Costs a fraction of a cent per site.
+- **"Write it with Claude"** in the template wizard, for fresher wording than the local builder produces.
 
 **This is the one part of the app that costs money.** The Anthropic API is paid and has no permanent free tier. A template generation is a fraction of a cent, but it is not zero, and the UI labels the button accordingly. Leave `ANTHROPIC_API_KEY` unset to keep the deployment entirely free — nothing else changes.
 
@@ -248,6 +269,7 @@ app/
     send-email/route.js      Sends exactly one message
     test-smtp/route.js       POST verifies credentials; GET reports integrations
     ai-template/route.js     Template wizard (local builder, optional Claude)
+    deliverability/route.js  SPF/DKIM/DMARC audit + spam content scan
 components/
   Header.jsx                 Branding, daily quota, integration badges, backup
   LeadFinder.jsx             Tab 1
@@ -258,6 +280,7 @@ components/
     AttachmentManager.jsx      "Files & links"
   CampaignDashboard.jsx      Tab 3 — Send
   SmtpSettings.jsx           Tab 4 — Settings
+  DeliverabilityPanel.jsx    "Why does my mail go to spam?"
   LeadTable.jsx              Shared table: selection, inline edit, sort, filter
   ui.jsx                     Shared primitives
 lib/
@@ -269,6 +292,9 @@ lib/
   template-builder.js        Deterministic template assembly            (isomorphic)
   queue.js                   Paced send queue                           (isomorphic)
   drive.js                   Google Drive link normalisation            (isomorphic)
+  dns-auth.js                SPF / DKIM / DMARC / MX lookups            (server)
+  ai-extract.js              Optional Claude contact extraction         (server)
+  spam-check.js              Content spam scoring                       (isomorphic)
   business-types.js          Industry → OpenStreetMap tag mapping       (isomorphic)
   search-urls.js             URL parsing and directory links            (isomorphic)
   storage.js                 Browser persistence, import/export         (client)
