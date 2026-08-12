@@ -7,7 +7,7 @@
  *   {
  *     urls: string[],                  // required, max 10 per request
  *     options?: {
- *       maxPages?: number,             // pages per site (default 4, max 8)
+ *       maxPages?: number,             // pages per site (default 6, max 15)
  *       respectRobots?: boolean,       // default true
  *       useFirecrawl?: boolean,        // fall back to Firecrawl when configured
  *       industry?: string,             // copied onto each lead for templating
@@ -36,6 +36,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 const MAX_URLS_PER_REQUEST = 10;
+
+/**
+ * Ceiling for the "pages to scrape per website" selector. Above this a single
+ * batch cannot finish inside `maxDuration` however small the batch gets, and
+ * the extra pages are almost always /blog and /shop rather than contact details.
+ */
+const MAX_PAGES_PER_SITE = 15;
 
 export async function POST(request) {
   const startedAt = Date.now();
@@ -78,10 +85,17 @@ export async function POST(request) {
 
   if (!cleanUrls.length) return jsonError('No usable URLs after trimming.', 400);
 
+  const maxPages = Math.min(Math.max(Number(options.maxPages) || 6, 1), MAX_PAGES_PER_SITE);
+
   const scrapeOptions = {
-    maxPages: Math.min(Math.max(Number(options.maxPages) || 4, 1), 8),
+    maxPages,
     respectRobots: options.respectRobots !== false,
     concurrency: 4,
+    // Split the invocation budget across the batch, with headroom for the
+    // optional Firecrawl and Claude passes that run afterwards. Sites are
+    // crawled concurrently, so each one gets the same slice rather than
+    // 1/n of it.
+    budgetMs: Math.max(8_000, Math.floor((maxDuration * 1000 * 0.6) / Math.max(1, Math.ceil(cleanUrls.length / 4)))),
   };
 
   try {

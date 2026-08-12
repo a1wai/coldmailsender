@@ -43,6 +43,8 @@ export default function SmtpSettings({
   onClearCredentials,
   templates = [],
   attachments = [],
+  optOuts = [],
+  onOptOutsChange,
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -357,6 +359,8 @@ export default function SmtpSettings({
         attachments={attachments}
       />
 
+      <OptOutList optOuts={optOuts} onChange={onOptOutsChange} />
+
       {/* ---------------------------------------------------- how it works */}
       <Card title="Where your password goes">
         <ul className="flex flex-col gap-2.5 text-sm text-slate-300">
@@ -380,6 +384,85 @@ export default function SmtpSettings({
         </ul>
       </Card>
     </div>
+  );
+}
+
+/**
+ * The opt-out list.
+ *
+ * Kept additive on purpose — there is a "remove" button, because a genuine
+ * mistake has to be correctable, but nothing bulk-clears it and a backup
+ * restore merges rather than replaces. Mailing someone who has already asked
+ * you to stop is both the fastest way to earn a spam complaint and, in most
+ * jurisdictions, illegal.
+ */
+function OptOutList({ optOuts, onChange }) {
+  const [draft, setDraft] = useState('');
+
+  const add = () => {
+    const incoming = draft
+      .split(/[\s,;]+/)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.includes('@'));
+
+    if (!incoming.length) return;
+    onChange?.([...new Set([...optOuts, ...incoming])]);
+    setDraft('');
+  };
+
+  return (
+    <Card
+      title={`Opt-out list${optOuts.length ? ` — ${optOuts.length}` : ''}`}
+      description="Addresses here are removed from every campaign before it starts."
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                add();
+              }
+            }}
+            placeholder="someone@example.com, another@example.com"
+            aria-label="Addresses to add to the opt-out list"
+            className="input flex-1"
+          />
+          <button type="button" onClick={add} disabled={!draft.includes('@')} className="btn-secondary shrink-0">
+            Add
+          </button>
+        </div>
+
+        {optOuts.length > 0 && (
+          <ul className="flex max-h-52 flex-wrap gap-1.5 overflow-y-auto">
+            {optOuts.map((email) => (
+              <li
+                key={email}
+                className="flex items-center gap-1.5 rounded-lg border border-edge bg-white/[0.03] py-1 pl-2.5 pr-1.5 text-xs text-slate-300"
+              >
+                <span className="max-w-[220px] truncate">{email}</span>
+                <button
+                  type="button"
+                  onClick={() => onChange?.(optOuts.filter((entry) => entry !== email))}
+                  aria-label={`Remove ${email} from the opt-out list`}
+                  className="rounded p-0.5 text-slate-500 transition-colors hover:bg-red-500/15 hover:text-red-400"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          Anyone who clicks the unsubscribe link in your mail is added here automatically the next time a send to them
+          is attempted, and the server refuses that send regardless. This list is included in backups and merged rather
+          than overwritten on restore, so it can only ever grow.
+        </p>
+      </div>
+    </Card>
   );
 }
 

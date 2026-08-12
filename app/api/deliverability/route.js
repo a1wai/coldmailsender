@@ -18,7 +18,8 @@
  */
 
 import { auditSendingDomain } from '@/lib/dns-auth';
-import { analyseMessage, DELIVERABILITY_PLAYBOOK } from '@/lib/spam-check';
+import { analyseMessage, DELIVERABILITY_PLAYBOOK, WARMUP_SCHEDULE } from '@/lib/spam-check';
+import { resolveAppOrigin, isUnsubscribeSigningConfigured } from '@/lib/unsubscribe';
 import { jsonOk, jsonError, readJsonBody, rateLimit, clientKey } from '@/lib/http';
 
 export const runtime = 'nodejs';
@@ -52,6 +53,17 @@ export async function POST(request) {
     }
   }
 
+  // Is the RFC 8058 endpoint reachable from the outside? An explicit
+  // UNSUBSCRIBE_URL counts too — the user hosts their own page in that case.
+  const origin = resolveAppOrigin(request);
+  const oneClick = {
+    active: Boolean(process.env.UNSUBSCRIBE_URL || origin),
+    url: process.env.UNSUBSCRIBE_URL || (origin ? `${origin}/api/unsubscribe` : ''),
+    signed: isUnsubscribeSigningConfigured(),
+    // A localhost origin produces links no mail client can reach.
+    local: /localhost|127\.0\.0\.1/.test(origin),
+  };
+
   const content =
     subject || messageBody
       ? analyseMessage({
@@ -61,8 +73,16 @@ export async function POST(request) {
           attachmentCount: Number(attachmentCount) || 0,
           hasUnsubscribe: hasUnsubscribe !== false,
           hasPostalAddress: hasPostalAddress !== false,
+          hasOneClickUnsubscribe: oneClick.active && !oneClick.local,
         })
       : null;
 
-  return jsonOk({ dns, dnsError, content, playbook: DELIVERABILITY_PLAYBOOK });
+  return jsonOk({
+    dns,
+    dnsError,
+    content,
+    oneClick,
+    playbook: DELIVERABILITY_PLAYBOOK,
+    warmup: WARMUP_SCHEDULE,
+  });
 }

@@ -7,9 +7,14 @@
  * Find leads.
  *
  * Under the hood that is two steps, run back to back with live progress:
- *   1. `/api/discover` asks OpenStreetMap for real businesses in the area.
- *      Many carry a website; some publish an e-mail outright.
+ *   1. `/api/discover` asks Google Places (when a key is configured) and
+ *      OpenStreetMap for real businesses in the area. Many carry a website;
+ *      some publish an e-mail outright.
  *   2. `/api/scrape` visits the websites that had no address and looks for one.
+ *
+ * A run stops at the chosen lead cap, and nothing is ever cleared between runs
+ * — the intended loop is search, change the location, search again, and watch
+ * the same list grow.
  *
  * Manual routes stay available for the cases automation misses: a single
  * Google Maps button for eyeballing an area, a paste-URLs box, and an
@@ -38,15 +43,46 @@ import { createLead, mergeLeads } from '@/lib/leads';
 import { chunk, parseUrlList } from '@/lib/search-urls';
 import { downloadCsv, downloadJson } from '@/lib/storage';
 
-/** URLs per scrape request — keeps every call well inside the timeout. */
-const SCRAPE_BATCH = 5;
-
 const RADIUS_OPTIONS = [
   { value: 2000, label: '2 km — city centre' },
   { value: 5000, label: '5 km — whole town' },
   { value: 10000, label: '10 km — town + suburbs' },
   { value: 25000, label: '25 km — wide region' },
 ];
+
+/**
+ * How deep to crawl each website. More pages finds more addresses — plenty of
+ * businesses bury theirs on /impressum, /team or /privacy rather than /contact
+ * — but every page is another HTTP round trip, so a deep crawl of a slow site
+ * is genuinely slow.
+ */
+const PAGE_OPTIONS = [
+  { value: 1, label: '1 page — homepage only (fastest)' },
+  { value: 3, label: '3 pages — homepage + contact' },
+  { value: 6, label: '6 pages — recommended' },
+  { value: 10, label: '10 pages — thorough' },
+  { value: 15, label: '15 pages — exhaustive (slow)' },
+];
+
+/** Stop a run once this many new leads have been added. */
+const CAP_OPTIONS = [
+  { value: 25, label: 'Stop at 25 new leads' },
+  { value: 50, label: 'Stop at 50 new leads' },
+  { value: 100, label: 'Stop at 100 new leads' },
+  { value: 200, label: 'Stop at 200 new leads' },
+  { value: 0, label: 'No limit' },
+];
+
+/**
+ * URLs per scrape request. Shrinks as the page depth grows so a single request
+ * stays inside the serverless execution limit: 5 sites × 15 pages is 75 HTTP
+ * fetches, which will not finish in 30 seconds.
+ */
+function batchSizeFor(maxPages) {
+  if (maxPages >= 10) return 2;
+  if (maxPages >= 6) return 3;
+  return 5;
+}
 
 export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsChange, serverStatus }) {
   const [busy, setBusy] = useState(null); // 'discovering' | 'crawling' | null
@@ -61,6 +97,11 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
   const update = (patch) => onSettingsChange({ ...settings, ...patch });
   const parsed = useMemo(() => parseUrlList(urlInput), [urlInput]);
 
+  // Normalised here rather than at every use site: these come out of stored
+  // settings that predate both options, so `undefined` has to mean "default".
+  const pagesPerSite = Number(settings.maxPages) > 0 ? Number(settings.maxPages) : 6;
+  const runCap = settings.runCap === 0 ? 0 : Number(settings.runCap) || 50;
+
   const canSearch = Boolean(settings.place?.lat) && Boolean(settings.typeId || settings.keyword?.trim());
 
   const mapsUrl = useMemo(() => {
@@ -71,17 +112,31 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
     return `https://www.google.com/maps/search/${encodeURIComponent(terms || 'businesses')}`;
   }, [settings.typeId, settings.keyword, settings.place, settings.location]);
 
-  /** Crawls a set of websites for e-mail addresses, updating leads as it goes. */
-  async function crawlForEmails(targets, startingLeads) {
-    if (!targets.length) return { crawled: 0, found: 0, leads: startingLeads };
+  /**
+   * Crawls a set of websites for e-mail addresses, updating leads as it goes.
+   *
+   * `capAt` is an absolute target: stop once the whole list holds this many
+   * contactable leads. Passing an absolute number rather than "how many more"
+   * keeps the check correct when a batch merges into existing rows instead of
+   * adding new ones.
+   */
+  async function crawlForEmails(targets, startingLeads, capAt = Infinity) {
+    if (!targets.length) return { crawled: 0, found: 0, leads: startingLeads, cappedOut: false };
 
     setBusy('crawling');
+    const batchSize = batchSizeFor(pagesPerSite);
     let working = startingLeads;
     let found = 0;
     let done = 0;
+    let cappedOut = false;
 
-    for (const batch of chunk(targets, SCRAPE_BATCH)) {
+    for (const batch of chunk(targets, batchSize)) {
       if (abortRef.current) break;
+
+      if (working.filter((lead) => lead.email).length >= capAt) {
+        cappedOut = true;
+        break;
+      }
 
       try {
         // eslint-disable-next-line no-await-in-loop
@@ -91,7 +146,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
           body: JSON.stringify({
             urls: batch,
             options: {
-              maxPages: settings.maxPages,
+              maxPages: pagesPerSite,
               respectRobots: settings.respectRobots,
               useFirecrawl: settings.useFirecrawl,
               useAi: settings.useAi,
@@ -117,7 +172,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
       onLeadsChange(working);
     }
 
-    return { crawled: done, found, leads: working };
+    return { crawled: done, found, leads: working, cappedOut };
   }
 
   /** The main action: discover businesses, then crawl the ones missing an address. */
@@ -129,6 +184,12 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
     setFeedback(null);
     setProgress({ phase: 'discovering' });
 
+    // The cap counts leads added by *this* run. Everything already in the list
+    // stays put, which is what makes "search, change the location, search
+    // again" accumulate instead of starting over.
+    const baseline = leads.filter((lead) => lead.email).length;
+    const capAt = runCap ? baseline + runCap : Infinity;
+
     try {
       const response = await fetch('/api/discover', {
         method: 'POST',
@@ -139,6 +200,9 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
           radius: settings.radius,
           typeId: settings.typeId,
           keyword: settings.keyword,
+          // Ask for enough to fill the cap even if most sites yield nothing.
+          limit: runCap ? Math.min(runCap * 3, 200) : 200,
+          source: settings.source || 'auto',
           industry:
             settings.industry || BUSINESS_TYPES.find((entry) => entry.id === settings.typeId)?.label || '',
           location: settings.place.short || settings.location,
@@ -149,12 +213,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
       if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       if (!data.leads.length) {
-        setFeedback({
-          tone: 'warn',
-          message:
-            'OpenStreetMap has no businesses of that type mapped in this area. Try a wider radius, a different ' +
-            'type, or use the Google Maps button below and paste the sites you find.',
-        });
+        setFeedback({ tone: 'warn', message: explainEmptyResult(data, serverStatus) });
         setBusy(null);
         setProgress(null);
         return;
@@ -165,19 +224,22 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
 
       // Crawl anything that has a website but no address yet.
       const targets = data.leads.filter((lead) => !lead.email && lead.website).map((lead) => lead.website);
-      const crawl = await crawlForEmails(targets, afterDiscovery.leads);
+      const crawl = await crawlForEmails(targets, afterDiscovery.leads, capAt);
 
       const totalWithEmail = crawl.leads.filter((lead) => lead.email).length;
+      const gained = totalWithEmail - baseline;
 
       setFeedback({
-        tone: totalWithEmail ? 'success' : 'warn',
-        message:
-          `Found ${data.stats.found} businesses · ${data.stats.withEmail} published an e-mail · ` +
-          `crawled ${crawl.crawled} websites and found ${crawl.found} more. ` +
-          `You now have ${totalWithEmail} contactable lead${totalWithEmail === 1 ? '' : 's'}.` +
-          (!serverStatus?.firecrawl && crawl.crawled > crawl.found
-            ? ' Sites that came back empty are often JavaScript-rendered — a free Firecrawl key reaches those.'
-            : ''),
+        tone: gained ? 'success' : 'warn',
+        message: summariseRun({
+          data,
+          crawl,
+          gained,
+          totalWithEmail,
+          runCap,
+          serverStatus,
+          aborted: abortRef.current,
+        }),
       });
     } catch (error) {
       setFeedback({ tone: 'error', message: error.message });
@@ -275,30 +337,47 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
             onChange={(event) => update({ keyword: event.target.value })}
             disabled={Boolean(busy)}
             placeholder="e.g. boutique, dental, vegan"
-            hint={settings.typeId ? 'Ignored while a type is selected.' : 'Matches the business name.'}
+            hint={
+              settings.typeId
+                ? 'Narrows the chosen type to names containing this word.'
+                : 'Matches the business name.'
+            }
           />
 
-          <div>
-            <label className="label" htmlFor="search-radius">
-              Search area
-            </label>
-            <div className="relative">
-              <select
-                id="search-radius"
-                value={settings.radius}
-                onChange={(event) => update({ radius: Number(event.target.value) })}
-                disabled={Boolean(busy)}
-                className="input cursor-pointer appearance-none pr-9"
-              >
-                {RADIUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            </div>
-          </div>
+          <OptionSelect
+            id="search-radius"
+            label="Search area"
+            value={settings.radius}
+            options={RADIUS_OPTIONS}
+            disabled={Boolean(busy)}
+            onChange={(value) => update({ radius: value })}
+          />
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <OptionSelect
+            id="pages-per-site"
+            label="Pages to scrape per website"
+            value={pagesPerSite}
+            options={PAGE_OPTIONS}
+            disabled={Boolean(busy)}
+            onChange={(value) => update({ maxPages: value })}
+            hint={
+              pagesPerSite >= 10
+                ? 'Deep crawls catch addresses hidden on /impressum, /team and /privacy — but take several minutes.'
+                : 'Most sites publish an address within the first few pages.'
+            }
+          />
+
+          <OptionSelect
+            id="run-cap"
+            label="Stop this run after"
+            value={runCap}
+            options={CAP_OPTIONS}
+            disabled={Boolean(busy)}
+            onChange={(value) => update({ runCap: value })}
+            hint="Leads are never cleared between runs — change the location and press Find leads again to keep adding."
+          />
         </div>
 
         {/* Big primary button */}
@@ -399,11 +478,25 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
           />
         </div>
 
-        <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
-          Business data comes from OpenStreetMap, which is open data and free to query. Google Search and Maps results
-          cannot be harvested automatically — their Terms of Service prohibit it and they block it in practice — so the
-          Maps button is there for reviewing an area yourself and pasting anything worth adding.
-        </p>
+        <div className="mt-4 rounded-xl border border-edge-soft bg-white/[0.02] p-3.5 text-[11px] leading-relaxed text-slate-500">
+          {serverStatus?.googlePlaces ? (
+            <p>
+              <strong className="text-slate-300">Sources: Google Places + OpenStreetMap.</strong> Google returns the
+              same businesses you see when you search Maps by hand; OpenStreetMap occasionally adds an e-mail address
+              Google never exposes. Google Places is billed per search past its free monthly credit.
+            </p>
+          ) : (
+            <p>
+              <strong className="text-slate-300">Why Maps shows more than this does.</strong> Businesses come from
+              OpenStreetMap, which is volunteer-mapped — a shop is in it only because somebody walked past and added
+              it. Google&apos;s index comes from Street View, owners claiming listings, and paid data partners, so in
+              most regions it holds several times more. Scraping Maps is not the answer: it breaks Google&apos;s terms
+              and gets blocked within days. Set{' '}
+              <code className="rounded bg-white/[0.06] px-1 py-0.5 text-slate-400">GOOGLE_PLACES_API_KEY</code> to query
+              the same index through Google&apos;s own API, or use the Maps button and paste what you find.
+            </p>
+          )}
+        </div>
       </Card>
 
       {/* ================================================================= */}
@@ -559,6 +652,92 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
       </Card>
     </div>
   );
+}
+
+/** Labelled `<select>` with the app's chevron and hint treatment. */
+function OptionSelect({ id, label, value, options, disabled, onChange, hint }) {
+  return (
+    <div>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <div className="relative">
+        <select
+          id={id}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          disabled={disabled}
+          className="input cursor-pointer appearance-none pr-9"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+      </div>
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Explains a zero-result search using what the server actually reported, so
+ * the user learns which knob to turn instead of guessing.
+ */
+function explainEmptyResult(data, serverStatus) {
+  const osmError = data.diagnostics?.osm?.error;
+  const googleError = data.diagnostics?.google?.error;
+
+  if (googleError) return `Google Places returned nothing usable: ${googleError}`;
+  if (osmError) return `OpenStreetMap could not answer: ${osmError}`;
+
+  const attempts = data.diagnostics?.osm?.attempts || [];
+  const widest = attempts.length ? attempts[attempts.length - 1].radius : null;
+  const searched = widest ? ` even after widening to ${Math.round(widest / 1000)} km` : '';
+
+  return (
+    `Nothing matched${searched}. ` +
+    (serverStatus?.googlePlaces
+      ? 'Try a broader business type, or drop the keyword — it narrows the search.'
+      : 'OpenStreetMap has thin coverage in many areas. Pick a broader type such as "Any shop" or ' +
+        '"Everything with a name", set GOOGLE_PLACES_API_KEY to search the same index Google Maps uses, or ' +
+        'open Maps below and paste the sites you find into the box underneath.')
+  );
+}
+
+/** One sentence per thing that happened, and a clear next action. */
+function summariseRun({ data, crawl, gained, totalWithEmail, runCap, serverStatus, aborted }) {
+  const parts = [];
+  const sources = data.diagnostics?.sources || [];
+
+  parts.push(
+    `Found ${data.stats.found} businesses` +
+      (sources.length > 1 ? ' across Google Places and OpenStreetMap' : sources[0] === 'google' ? ' via Google Places' : ''),
+  );
+
+  if (data.stats.withEmail) parts.push(`${data.stats.withEmail} published an e-mail outright`);
+  if (crawl.crawled) parts.push(`crawled ${crawl.crawled} websites and found ${crawl.found} more`);
+  if (data.stats.noContactRoute) parts.push(`${data.stats.noContactRoute} had no website to crawl`);
+
+  let message = `${parts.join(' · ')}. You now have ${totalWithEmail} contactable lead${totalWithEmail === 1 ? '' : 's'}.`;
+
+  if (aborted) {
+    message += ' Stopped early.';
+  } else if (crawl.cappedOut || (runCap && gained >= runCap)) {
+    message += ` That is the ${runCap}-lead limit for one run — change the location above and press Find leads again to keep adding to the same list.`;
+  } else if (gained > 0) {
+    message += ' Change the location and search again to keep adding.';
+  }
+
+  if (data.warnings?.length) message += ` (${data.warnings.join('; ')})`;
+
+  if (!serverStatus?.firecrawl && crawl.crawled > crawl.found) {
+    message += ' Sites that came back empty are often JavaScript-rendered — a free Firecrawl key reaches those.';
+  }
+
+  return message;
 }
 
 /** Simple disclosure panel — keeps secondary actions out of the way. */

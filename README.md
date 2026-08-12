@@ -36,16 +36,29 @@ Pick a business type and a place, press **Find leads**. That's the whole interac
 
 Behind it, two steps run back to back with live progress:
 
-1. **OpenStreetMap** is queried for real businesses of that type in that area — name, website, phone, address, and for a useful minority an e-mail already published in the map data.
+1. **Business discovery** — real businesses of that type in that area, with name, website, phone, address, and for a useful minority an e-mail already published in the source data.
 2. Every business that has a website but no address gets **crawled** for one. The crawler follows contact, team, about and imprint pages (in several languages), falls back to the sitemap when a site's navigation is JavaScript-rendered, and pairs each address with the **person and job title** sitting next to it — so you get "Sarah Jansen, Studio Manager" rather than a bare `info@`.
 
-The location field autocompletes as you type (also OpenStreetMap), so "Troy" resolves to the right Troy and the search radius is sized to the place rather than guessed.
+Two controls shape the run:
+
+- **Pages to scrape per website** — 1 to 15. Plenty of businesses bury their address on `/impressum`, `/team` or `/privacy` rather than `/contact`, so a deeper crawl finds more; it is also slower, and the app shrinks its request batches automatically to compensate.
+- **Stop this run after** — 25, 50, 100, 200 new leads, or no limit. Nothing is ever cleared between runs, so the intended loop is: search, change the location, search again, and watch the same list grow. Businesses found twice merge into one row rather than duplicating.
+
+The location field autocompletes as you type, so "Troy" resolves to the right Troy and the search radius is sized to the place rather than guessed.
 
 There's a single **Open Google Maps** button for eyeballing an area yourself, an **Add a lead by hand** form, and a **Paste website URLs** box for a list you already have. The `Name` column falls back to the domain when no person is found — `intoworld.com` becomes `Intoworld` — so every row is usable in a template.
 
 With `ANTHROPIC_API_KEY` set, a third pass has Claude read the crawled pages and pick the *right* contact: it resolves which of six addresses on a page belongs to a decision-maker, skips `careers@`/`press@`/`legal@`, attaches names the markup never linked, and reads addresses written out as "sarah dot jansen at studio dot nl". Any address it returns is checked against the source text before being accepted, so it cannot invent one. This pass is paid — the crawler works without it.
 
-> The app does **not** scrape Google Search or Maps results. Their Terms of Service prohibit it and they block it in practice, so anything built on it breaks within days. OpenStreetMap data is ODbL-licensed and explicitly meant to be queried, which is why it's the automated path here.
+#### "Google Maps shows forty of these and this found three"
+
+Both halves of that are usually true, for two separate reasons.
+
+**Coverage.** By default businesses come from OpenStreetMap, which is volunteer-mapped: a shop is in it only because somebody walked past and added it. Google's index comes from Street View, owners claiming listings, and paid data partners, so in most regions it holds several times more. Set **`GOOGLE_PLACES_API_KEY`** and the app queries the Places API (New) — Google's own sanctioned route to that same index — alongside OpenStreetMap, merging the two by website. Billed per search past a monthly credit, so it is a paid opt-in like the Claude key.
+
+**Tagging.** This part was a genuine bug and is fixed. `office=advertising_agency` is the textbook OSM tag for a marketing agency and almost nobody uses it; the same business is far more likely to be `office=company` with "Marketing" in its name. Discovery now runs a cascade — exact tags, then double the radius, then container keys filtered by a multilingual synonym list, then a name match across every business key — and stops as soon as it has enough. A keyword typed alongside a business type now *narrows* it instead of being ignored.
+
+> The app does **not** scrape Google Search or Maps results. Their Terms of Service prohibit it and they block it in practice, so anything built on it breaks within days. OpenStreetMap data is ODbL-licensed and explicitly meant to be queried; the Places API is Google's documented interface. Both are legitimate; scraping is not.
 
 ### 2. Write message
 
@@ -86,15 +99,31 @@ It also holds the **deliverability check** — see below.
 
 ### Why your mail goes to spam
 
-The Settings tab has a **Deliverability check** that answers this with evidence rather than advice. It does two things:
+Short version, in order of impact:
 
-**Looks up your domain's authentication.** SPF, DKIM, DMARC and MX, with the exact record to add when one is missing. This is usually the real answer — since February 2024 Gmail and Yahoo require all three from bulk senders, and mail without them is throttled or rejected regardless of how well it is written. A lookup that fails is reported as *unknown*, never as "missing", because publishing a second SPF record breaks SPF entirely.
+1. **You are sending from `@gmail.com`.** This is the answer most of the time. A free mailbox cannot be DKIM-signed as yours, so it can never pass DMARC alignment on a domain you control, and it carries the shared reputation of every other account on that provider. Plenty of corporate mail gateways filter cold outreach from consumer Gmail on sight. Your own domain behind Google Workspace (~$7/month) fixes more than every content tweak combined, and nothing else on this list fully compensates for skipping it.
+2. **SPF, DKIM and DMARC are missing or misaligned.** Publishing the records is not enough — the domain in your `From:` header has to match the one SPF or DKIM authenticated, or DMARC fails anyway.
+3. **You have no one-click unsubscribe.** Since February 2024 Google, Yahoo and Apple all expect a `List-Unsubscribe-Post` header on outreach mail, and RFC 8058 one-click is defined over HTTPS only — a `mailto:` opt-out does not satisfy it.
+4. **You ramped too fast.** A brand-new address sending 200 messages on day one looks exactly like a compromised account.
+5. **The message itself.** Real, but the smallest of the five.
 
-**Scans your template.** Spam-trigger phrasing, ALL CAPS, exclamation marks, link count, URL shorteners, attachments, missing opt-out, fake `Re:` prefixes.
+The Settings tab has a **Deliverability check** that reports on all of it with evidence rather than advice:
 
-The single most common cause it finds: **sending from `@gmail.com`**. A free mailbox cannot be authenticated as yours and carries the shared reputation of everyone else using it. Your own domain behind Google Workspace (~$7/month) fixes more than every content tweak combined.
+**Your domain's authentication.** SPF, DKIM, DMARC and MX, with the exact record to add when one is missing. A lookup that fails is reported as *unknown*, never as "missing", because publishing a second SPF record breaks SPF entirely.
 
-The app also does its part automatically — no tracking pixels, no image-heavy HTML, a plain-text alternative on every message, `List-Unsubscribe` headers, paced sending, and the `X-Mailer` header nodemailer normally stamps on outgoing mail is turned off, since it is a bulk-sender fingerprint that appears on almost nothing a human sends.
+**Your one-click unsubscribe status**, including a warning when the app is running somewhere recipients cannot reach.
+
+**A warm-up schedule** — a per-week daily ceiling for a fresh address, from 10/day in week one to 300/day by week six.
+
+**Your template.** Spam-trigger phrasing, ALL CAPS, exclamation marks, link count, URL shorteners, attachments, missing opt-out, fake `Re:` prefixes.
+
+#### What the app handles for you
+
+- **One-click unsubscribe is hosted for you** at `/api/unsubscribe`. On Vercel it configures itself; elsewhere set `UNSUBSCRIBE_BASE_URL`. Every message carries a per-recipient signed link, mail clients get RFC 8058 `POST` semantics, and humans get a confirmation page — a `GET` never opts anyone out, because link scanners and mail-client prefetchers follow every URL in a message.
+- **Opt-outs are honoured in three places**: the browser filters its own list before queueing, the server refuses the send outright, and the recipient is marked `unsubscribed` in the table. The list is additive, included in backups, and merged rather than replaced on restore, so it can only grow.
+- No tracking pixels, no image-heavy HTML, a plain-text alternative on every message, paced sending, and the `X-Mailer` header nodemailer normally stamps on outgoing mail is turned off, since it is a bulk-sender fingerprint that appears on almost nothing a human sends.
+
+Two numbers worth knowing: keep your spam-complaint rate **below 0.10%**, and treat **0.30%** as the point of failure rather than a target — that is where providers start filtering or blocking. The formal "bulk sender" threshold is 5,000 messages a day to one provider, so most users of this app sit under it. That exempts you from the rules being enforced as a pass/fail gate; it does not exempt you from being scored on them.
 
 No tool can promise inbox placement — reputation is built over weeks of people wanting your mail. The check covers the part you control.
 
@@ -170,8 +199,11 @@ Every one is optional. Full annotated list in [`.env.example`](.env.example).
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Display name and an alternate reply address |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Non-Gmail providers (defaults: `smtp.gmail.com`, `465`, `true`) |
 | `ANTHROPIC_API_KEY` | Enables AI contact extraction in the crawler and the "Write it with Claude" button — **paid**, see below |
+| `GOOGLE_PLACES_API_KEY` | Searches the same index Google Maps uses, via Google's own API — **paid** past a monthly credit, see below |
 | `SENDER_POSTAL_ADDRESS` | Physical address for the footer — legally required for commercial mail |
-| `UNSUBSCRIBE_EMAIL`, `UNSUBSCRIBE_URL` | Opt-out targets; also populate the `List-Unsubscribe` header |
+| `UNSUBSCRIBE_BASE_URL` | This app's public URL, so it can mint one-click opt-out links. Auto-detected on Vercel |
+| `UNSUBSCRIBE_SECRET` | Signs those links so a forged one can't be used. `openssl rand -hex 32` |
+| `UNSUBSCRIBE_EMAIL`, `UNSUBSCRIBE_URL` | `mailto:` opt-out target, and an override if you host your own unsubscribe page |
 | `FIRECRAWL_API_KEY` | Enables the JS-rendering scraper fallback |
 | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `QSTASH_CALLBACK_BASE_URL` | Background queue |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Persist leads and campaign history |
@@ -195,6 +227,14 @@ Two features switch on with a key:
 **This is the one part of the app that costs money.** The Anthropic API is paid and has no permanent free tier. A template generation is a fraction of a cent, but it is not zero, and the UI labels the button accordingly. Leave `ANTHROPIC_API_KEY` unset to keep the deployment entirely free — nothing else changes.
 
 Key at <https://console.anthropic.com>.
+
+### Google Places — the businesses Google Maps shows (paid past a free credit)
+
+OpenStreetMap is free forever and needs no key, but it is volunteer-mapped and much thinner than Google in most regions. With `GOOGLE_PLACES_API_KEY` set, discovery also queries the **Places API (New)** and merges the results by website — Google brings the breadth, OpenStreetMap occasionally brings an e-mail address Google never exposes.
+
+Text Search is billed per request, with a recurring monthly credit that covers a fair amount for free. Enable "Places API (New)" at <https://console.cloud.google.com/google/maps-apis>, restrict the key to that API, and set a budget alert.
+
+This is Google's documented interface, not scraping — the distinction matters, and the app has never done the latter.
 
 ### Firecrawl — deeper scraping
 
@@ -232,9 +272,15 @@ So the schedule lives in the browser (`lib/queue.js`) and each send is its own s
 
 Business discovery queries the **Overpass API** against OpenStreetMap, and location autocomplete uses **Nominatim**. Both are free, keyless, ODbL-licensed, and explicitly built to be queried — no Terms of Service problem and nothing to sign up for.
 
-Both are also donation-funded, so the app throttles itself: location lookups are debounced and cached server-side, discovery is rate-limited per client, requests carry an honest `User-Agent`, and the Overpass call falls back to a mirror when the main instance is busy. Please don't remove those limits — they're the reason the services stay free.
+Both are also donation-funded, so the app throttles itself: location lookups are debounced and cached server-side, discovery is rate-limited per client, requests carry an honest `User-Agent`, the query timeout is tightened so a widened search cannot pin a public instance, later cascade stages are skipped once enough results are in, and the Overpass call falls back to a mirror when the main instance is busy. Please don't remove those limits — they're the reason the services stay free.
 
-The trade-off is coverage: OpenStreetMap is volunteer-mapped, so a dense European city returns far more than a sparse suburb. When a search comes back thin, use the Google Maps button and paste what you find.
+The trade-off is coverage: OpenStreetMap is volunteer-mapped, so a dense European city returns far more than a sparse suburb. Set `GOOGLE_PLACES_API_KEY` to close that gap through Google's own API, or use the Google Maps button and paste what you find.
+
+### Opt-outs without a database
+
+`/api/unsubscribe` is hit by mail clients, not by the app, so the opt-out has to land somewhere the sender will actually see. It goes to three places, best-effort and in parallel: a `unsubscribes` table in Supabase when that's configured, an e-mail to the sender when server-side SMTP credentials exist, and the server log always. None of them failing can make the unsubscribe appear to fail — from the recipient's side it must always work.
+
+The browser keeps its own copy, which is what makes the feature useful with no backing services at all: the Send tab filters the list before queueing, and the server double-checks against Supabase before each message.
 
 ### Why the delays matter
 
@@ -263,7 +309,7 @@ app/
   globals.css                Tailwind layers and component classes
   icon.svg                   Favicon
   api/
-    discover/route.js        OpenStreetMap business search
+    discover/route.js        Business search (Google Places + OpenStreetMap)
     places/route.js          Location autocomplete (Nominatim proxy)
     scrape/route.js          Batch crawl → e-mail addresses
     send-email/route.js      Sends exactly one message
@@ -284,7 +330,7 @@ components/
   LeadTable.jsx              Shared table: selection, inline edit, sort, filter
   ui.jsx                     Shared primitives
 lib/
-  places.js                  Nominatim + Overpass queries and parsing   (server)
+  places.js                  Nominatim + Overpass, broadening cascade   (server)
   scraper.js                 Crawler, SSRF guard, robots.txt            (server)
   mailer.js                  nodemailer wrapper, compliance footer      (server)
   leads.js                   Lead shape, domain-derived names, merging  (isomorphic)
@@ -294,13 +340,14 @@ lib/
   drive.js                   Google Drive link normalisation            (isomorphic)
   dns-auth.js                SPF / DKIM / DMARC / MX lookups            (server)
   ai-extract.js              Optional Claude contact extraction         (server)
-  spam-check.js              Content spam scoring                       (isomorphic)
-  business-types.js          Industry → OpenStreetMap tag mapping       (isomorphic)
+  spam-check.js              Content scoring, playbook, warm-up ramp    (isomorphic)
+  unsubscribe.js             RFC 8058 tokens and origin resolution      (server)
+  business-types.js          Industry → OSM tags, synonyms, Places query (isomorphic)
   search-urls.js             URL parsing and directory links            (isomorphic)
   storage.js                 Browser persistence, import/export         (client)
   constants.js               Shared limits
   http.js                    JSON envelopes, body guard, rate limiter
-  adapters/                  firecrawl.js · qstash.js · supabase.js
+  adapters/                  firecrawl.js · google-places.js · qstash.js · supabase.js
 supabase/schema.sql          Optional database schema
 ```
 

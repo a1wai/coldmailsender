@@ -209,6 +209,61 @@ export default function DeliverabilityPanel({ smtp, serverStatus, campaign, temp
             </div>
           )}
 
+          {/* ------------------------------------------ one-click opt-out */}
+          {result.oneClick && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-slate-100">One-click unsubscribe</h3>
+              {result.oneClick.local ? (
+                <Alert tone="warn">
+                  Running on localhost, so the opt-out link in your mail would point somewhere no recipient can reach.
+                  Deploy to a public URL — or set <code>UNSUBSCRIBE_BASE_URL</code> — and the header starts working.
+                </Alert>
+              ) : result.oneClick.active ? (
+                <Alert tone="success">
+                  Active. Every message carries a <code>List-Unsubscribe-Post</code> header pointing at{' '}
+                  <span className="break-all font-mono text-[11px]">{result.oneClick.url}</span>, which is what Gmail,
+                  Yahoo and Apple expect on outreach mail.
+                  {!result.oneClick.signed && (
+                    <>
+                      {' '}
+                      Set <code>UNSUBSCRIBE_SECRET</code> to a random string to sign the links — without it a stranger
+                      who guesses a link can add addresses to your own opt-out list.
+                    </>
+                  )}
+                </Alert>
+              ) : (
+                <Alert tone="warn">
+                  Not active — this deployment cannot work out its own public URL. Set{' '}
+                  <code>UNSUBSCRIBE_BASE_URL</code> to your app&apos;s address, and opt-outs handle themselves.
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {/* ---------------------------------------------- warm-up ramp */}
+          {result.warmup && (
+            <div>
+              <h3 className="mb-1 text-sm font-semibold text-slate-100">Warm-up schedule</h3>
+              <p className="mb-3 text-xs leading-relaxed text-slate-500">
+                A new address that sends 200 messages on day one looks like a compromised account. If this address is
+                new to outreach, cap yourself at these numbers — a predictable daily volume matters more than the
+                number itself.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {result.warmup.map((entry) => (
+                  <div
+                    key={entry.week}
+                    title={entry.note}
+                    className="min-w-[92px] flex-1 rounded-xl border border-edge bg-white/[0.02] px-3 py-2"
+                  >
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500">Week {entry.week}</p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-200">{entry.perDay}/day</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* --------------------------------------------------- playbook */}
           <div className="rounded-xl border border-edge bg-white/[0.02]">
             <button

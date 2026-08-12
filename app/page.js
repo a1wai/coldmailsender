@@ -63,7 +63,9 @@ const DEFAULT_SCRAPER_SETTINGS = {
   place: null,        // { lat, lon, short, boundingbox } once picked from suggestions
   radius: 5000,
   industry: '',
-  maxPages: 4,
+  maxPages: 6,        // pages crawled per website — user-selectable in Tab 1
+  runCap: 50,         // stop a run after this many new contactable leads; 0 = no limit
+  source: 'auto',     // 'auto' | 'osm' | 'google'
   respectRobots: true,
   useFirecrawl: true,
 };
@@ -104,6 +106,7 @@ export default function Home() {
   const [leads, setLeads] = useStoredState(STORAGE_KEYS.leads, []);
   const [templates, setTemplates] = useStoredState(STORAGE_KEYS.templates, []);
   const [reelLinks, setReelLinks] = useStoredState(STORAGE_KEYS.reelLinks, []);
+  const [optOuts, setOptOuts] = useStoredState(STORAGE_KEYS.optOuts, []);
   const [scraperSettings, setScraperSettings] = useStoredState(STORAGE_KEYS.scraper, DEFAULT_SCRAPER_SETTINGS);
   const [campaign, setCampaign] = useStoredState(STORAGE_KEYS.campaign, DEFAULT_CAMPAIGN);
 
@@ -186,6 +189,19 @@ export default function Home() {
   const recordSend = useCallback((count) => {
     setSentToday(incrementSendCounter(count).count);
   }, []);
+
+  /** Adds addresses to the opt-out list. Additive only — never removes. */
+  const addOptOuts = useCallback(
+    (input) => {
+      const incoming = (Array.isArray(input) ? input : [input])
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter((entry) => entry.includes('@'));
+
+      if (!incoming.length) return;
+      setOptOuts((current) => [...new Set([...current, ...incoming])]);
+    },
+    [setOptOuts],
+  );
 
   const exportBackup = useCallback(() => {
     downloadJson(buildBackup(), `coldmailsender-backup-${new Date().toISOString().slice(0, 10)}`);
@@ -328,6 +344,8 @@ export default function Home() {
             onClearCredentials={clearCredentials}
             templates={templates}
             attachments={attachments}
+            optOuts={optOuts}
+            onOptOutsChange={setOptOuts}
           />
         )}
 
@@ -343,6 +361,8 @@ export default function Home() {
             serverStatus={serverStatus}
             sentToday={sentToday}
             onRecordSend={recordSend}
+            optOuts={optOuts}
+            onOptOut={addOptOuts}
           />
         )}
       </main>

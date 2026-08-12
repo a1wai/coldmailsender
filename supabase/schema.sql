@@ -63,6 +63,24 @@ create index if not exists campaign_events_status_idx  on public.campaign_events
 
 
 -- ----------------------------------------------------------------------------
+-- Opt-outs — written by /api/unsubscribe, read before every send
+--
+-- Separate from campaign_events on purpose. An opt-out has to outlive the
+-- campaign that caused it: deleting send history must never resurrect somebody
+-- who asked to be left alone. `email` is the primary key so a repeated click on
+-- the same unsubscribe link is idempotent rather than an error.
+-- ----------------------------------------------------------------------------
+create table if not exists public.unsubscribes (
+  email           text primary key,
+  sender          text,
+  source          text,
+  unsubscribed_at timestamptz not null default now()
+);
+
+create index if not exists unsubscribes_at_idx on public.unsubscribes (unsubscribed_at desc);
+
+
+-- ----------------------------------------------------------------------------
 -- Keep `updated_at` honest
 -- ----------------------------------------------------------------------------
 create or replace function public.touch_updated_at()
@@ -98,10 +116,12 @@ create trigger leads_touch_updated_at
 -- ----------------------------------------------------------------------------
 alter table public.leads           enable row level security;
 alter table public.campaign_events enable row level security;
+alter table public.unsubscribes    enable row level security;
 
 -- Drop any permissive policy left over from an earlier run.
 drop policy if exists leads_anon_all           on public.leads;
 drop policy if exists campaign_events_anon_all on public.campaign_events;
+drop policy if exists unsubscribes_anon_all    on public.unsubscribes;
 
 
 -- ----------------------------------------------------------------------------
