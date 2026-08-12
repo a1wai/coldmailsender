@@ -51,6 +51,8 @@ export default function CampaignDashboard({
   serverStatus,
   sentToday,
   onRecordSend,
+  optOuts = [],
+  onOptOut,
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [log, setLog] = useState([]);
@@ -67,7 +69,18 @@ export default function CampaignDashboard({
   const selectedTemplate = templates.find((template) => template.id === campaign.templateId) || null;
   const selectedLeads = useMemo(() => leads.filter((lead) => selectedIds.has(lead.id)), [leads, selectedIds]);
 
-  const { unique: sendableLeads, duplicates } = useMemo(() => dedupeLeads(selectedLeads), [selectedLeads]);
+  const optOutSet = useMemo(
+    () => new Set(optOuts.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)),
+    [optOuts],
+  );
+
+  // Opt-outs are removed before de-duplication, and silently — someone who has
+  // unsubscribed should never appear in a count of "recipients", not even as a
+  // number the user could talk themselves into overriding.
+  const { unique: sendableLeads, duplicates, suppressed } = useMemo(() => {
+    const allowed = selectedLeads.filter((lead) => !optOutSet.has(String(lead.email || '').toLowerCase()));
+    return { ...dedupeLeads(allowed), suppressed: selectedLeads.length - allowed.length };
+  }, [selectedLeads, optOutSet]);
 
   const dailyRemaining = Math.max(0, GMAIL_DAILY_LIMIT - sentToday);
   const estimate = estimateDuration(sendableLeads.length, campaign.minDelay, campaign.maxDelay);
@@ -119,6 +132,10 @@ export default function CampaignDashboard({
       found.push({ level: 'warn', text: `${duplicates} duplicate address(es) will be sent to only once.` });
     }
 
+    if (suppressed > 0) {
+      found.push({ level: 'info', text: `${suppressed} selected recipient(s) have opted out and were removed.` });
+    }
+
     if (sendableLeads.length > dailyRemaining) {
       found.push({
         level: 'warn',
@@ -127,7 +144,7 @@ export default function CampaignDashboard({
     }
 
     return found;
-  }, [selectedTemplate, sendableLeads.length, smtp, serverStatus, campaign, duplicates, dailyRemaining]);
+  }, [selectedTemplate, sendableLeads.length, smtp, serverStatus, campaign, duplicates, suppressed, dailyRemaining]);
 
   const blockingIssues = issues.filter((issue) => issue.level === 'error');
   const canStart = blockingIssues.length === 0 && !isRunning;
@@ -156,8 +173,20 @@ export default function CampaignDashboard({
 
   /** Selects everything that has an address and has not already been sent to. */
   const selectUncontacted = useCallback(() => {
-    setSelectedIds(new Set(leads.filter((lead) => lead.email && lead.status !== 'sent').map((lead) => lead.id)));
-  }, [leads]);
+    setSelectedIds(
+      new Set(
+        leads
+          .filter(
+            (lead) =>
+              lead.email &&
+              lead.status !== 'sent' &&
+              lead.status !== 'unsubscribed' &&
+              !optOutSet.has(lead.email.toLowerCase()),
+          )
+          .map((lead) => lead.id),
+      ),
+    );
+  }, [leads, optOutSet]);
 
   // ------------------------------------------------------------ sending
 
@@ -237,6 +266,10 @@ export default function CampaignDashboard({
           throw Object.assign(new Error(data.error || `Request failed (${response.status})`), {
             // The API tells us whether another attempt could plausibly succeed.
             retryable: data.retryable === true,
+            // …and whether this was a refusal rather than a failure, so the
+            // queue can count an opt-out as skipped instead of broken.
+            kind: data.kind || null,
+            skipped: data.skipped === true,
           });
         }
 
@@ -261,6 +294,11 @@ export default function CampaignDashboard({
           if (!campaign.dryRun) onRecordSend(1);
         }
         if (event.type === 'failed') updateLeadStatus(event.item.email, 'failed', event.error?.message || 'Send failed');
+        if (event.type === 'skipped') {
+          updateLeadStatus(event.item.email, 'unsubscribed');
+          // Persist it locally too, so this device stops offering them next time.
+          onOptOut?.(event.item.email);
+        }
         if (event.type === 'limit-reached') {
           onLeadsChange((current) =>
             current.map((lead) => (lead.status === 'queued' ? { ...lead, status: 'skipped' } : lead)),
@@ -393,7 +431,7 @@ export default function CampaignDashboard({
       {issues.length > 0 && !isRunning && (
         <div className="flex flex-col gap-2">
           {issues.map((issue, index) => (
-            <Alert key={index} tone={issue.level === 'error' ? 'error' : 'warn'}>
+            <Alert key={index} tone={issue.level === 'error' ? 'error' : issue.level === 'info' ? 'info' : 'warn'}>
               {issue.text}
             </Alert>
           ))}

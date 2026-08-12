@@ -34,11 +34,16 @@ import { Badge, EmptyState } from './ui';
 const STATUS_META = {
   new: { label: 'New', tone: 'brand', Icon: CircleDashed },
   'no-email': { label: 'No e-mail', tone: 'warn', Icon: TriangleAlert },
+  // Set by /api/discover for a business that has a website but no published
+  // address — the crawler's queue. Without an entry here it fell through to
+  // "New", which claimed a lead was contactable when it was not.
+  'needs-crawl': { label: 'Needs crawl', tone: 'neutral', Icon: Search },
   queued: { label: 'Queued', tone: 'neutral', Icon: CircleDashed },
   sending: { label: 'Sending', tone: 'brand', Icon: Loader2 },
   sent: { label: 'Sent', tone: 'success', Icon: Check },
   failed: { label: 'Failed', tone: 'error', Icon: X },
   skipped: { label: 'Skipped', tone: 'neutral', Icon: CircleDashed },
+  unsubscribed: { label: 'Unsubscribed', tone: 'warn', Icon: X },
 };
 
 const COLUMNS = [

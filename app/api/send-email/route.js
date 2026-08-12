@@ -31,7 +31,8 @@
 
 import { sendMail } from '@/lib/mailer';
 import { verifyQStashSignature } from '@/lib/adapters/qstash';
-import { logCampaignEvent, updateLeadStatus, isSupabaseEnabled } from '@/lib/adapters/supabase';
+import { logCampaignEvent, updateLeadStatus, isSupabaseEnabled, isUnsubscribed } from '@/lib/adapters/supabase';
+import { resolveAppOrigin } from '@/lib/unsubscribe';
 import { jsonOk, jsonError, rateLimit, clientKey } from '@/lib/http';
 
 export const runtime = 'nodejs';
@@ -84,8 +85,32 @@ export async function POST(request) {
 
   const { to, subject, html, text, attachments = [], credentials = {}, compliance = {}, meta = {} } = body;
 
+  // Last line of defence on opt-outs. The browser filters its own list before
+  // queueing, but that list only covers this device — someone who unsubscribed
+  // while a different browser was driving the campaign would otherwise still
+  // get mail, and a repeat send after an opt-out is the single fastest way to
+  // earn a spam complaint.
+  if (await isUnsubscribed(to)) {
+    console.log(`[api/send-email] Blocked send to ${to} — they have opted out.`);
+    return jsonError(`${to} has unsubscribed and was skipped.`, 409, {
+      kind: 'unsubscribed',
+      retryable: false,
+      skipped: true,
+      to,
+    });
+  }
+
   try {
-    const result = await sendMail({ credentials, to, subject, html, text, attachments, compliance });
+    const result = await sendMail({
+      credentials,
+      to,
+      subject,
+      html,
+      text,
+      attachments,
+      // Lets the mailer mint a one-click unsubscribe link pointing back here.
+      compliance: { ...compliance, appOrigin: compliance.appOrigin || resolveAppOrigin(request) },
+    });
 
     // Optional persistence — never allowed to fail the send.
     if (isSupabaseEnabled()) {

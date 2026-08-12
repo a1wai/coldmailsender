@@ -26,6 +26,7 @@ import { isFirecrawlEnabled } from '@/lib/adapters/firecrawl';
 import { isQStashEnabled } from '@/lib/adapters/qstash';
 import { isSupabaseEnabled } from '@/lib/adapters/supabase';
 import { isAiExtractionEnabled } from '@/lib/ai-extract';
+import { isGooglePlacesEnabled } from '@/lib/adapters/google-places';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,6 +111,7 @@ export async function GET() {
       qstash: isQStashEnabled(),
       supabase: isSupabaseEnabled(),
       aiExtract: isAiExtractionEnabled(),
+      googlePlaces: isGooglePlacesEnabled(),
       postalAddress: Boolean(process.env.SENDER_POSTAL_ADDRESS),
       unsubscribe: Boolean(process.env.UNSUBSCRIBE_URL || process.env.UNSUBSCRIBE_EMAIL),
     },
