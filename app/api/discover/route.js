@@ -159,7 +159,16 @@ export async function POST(request) {
     return jsonError(errors.join(' · ') + hint, 502, { diagnostics });
   }
 
-  const leads = [...merged.values()]
+  const allFound = [...merged.values()];
+
+  // A business with no website and no e-mail cannot be contacted, cannot be
+  // crawled, and cannot be improved by anything the app does next — it is a
+  // row that exists only to be deleted later. Counted, so the UI can say how
+  // many were dropped, then discarded.
+  const contactable = allFound.filter((business) => business.website || business.email);
+  const droppedNoContact = allFound.length - contactable.length;
+
+  const leads = contactable
     // An e-mail beats a website, a website beats neither.
     .sort((a, b) => scoreBusiness(b) - scoreBusiness(a))
     .slice(0, wanted)
@@ -173,24 +182,25 @@ export async function POST(request) {
         industry,
         location,
         source: business.source,
-        // No website and no e-mail means there is nothing to crawl and nothing
-        // to send to — flagged so the UI can offer to filter them out.
-        status: business.email ? 'new' : business.website ? 'needs-crawl' : 'no-email',
+        // Everything here has at least a website, so it is either already
+        // contactable or waiting on the crawler.
+        status: business.email ? 'new' : 'needs-crawl',
       }),
     );
 
   const withEmail = leads.filter((lead) => lead.email).length;
-  const withWebsite = leads.filter((lead) => lead.website).length;
 
   return jsonOk({
     leads,
     stats: {
       found: leads.length,
       withEmail,
-      withWebsite,
-      needsCrawl: leads.filter((lead) => !lead.email && lead.website).length,
-      // The dead end worth naming: a business nobody can be contacted at.
-      noContactRoute: leads.length - withWebsite,
+      withWebsite: leads.length,
+      needsCrawl: leads.length - withEmail,
+      // Matched the search but had no website and no address, so they were
+      // never added.
+      droppedNoContact,
+      totalMatched: allFound.length,
       googleAvailable,
       durationMs: Date.now() - startedAt,
     },

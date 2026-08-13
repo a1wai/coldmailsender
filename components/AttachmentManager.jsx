@@ -5,10 +5,16 @@
  * ---------------------------------------------------------------------------
  * Two related jobs:
  *
- *   1. Drag-and-drop file attachments, held in memory as base64 and posted
- *      with each send. Deliberately NOT persisted to LocalStorage — base64
- *      blows through the ~5 MB quota and would evict the leads and templates
- *      that actually matter. Re-attach after a page reload.
+ *   1. A file library of up to 50 MB, kept in this browser (IndexedDB, so it
+ *      survives a reload) and never uploaded anywhere until a message that
+ *      uses it is actually sent.
+ *
+ *      Two different limits apply and the UI is explicit about both. The
+ *      library holds 50 MB; a single *message* can carry only
+ *      `MAX_ATTACHMENT_BYTES`, because Vercel caps a serverless request body
+ *      at about 4.5 MB. A file above that is still stored and still useful —
+ *      it just gets shared as a link instead of ridden along as an attachment,
+ *      which is the better move for cold outreach regardless.
  *
  *   2. A library of portfolio / reel links, one of which is marked active and
  *      fills `{{reel_link}}` in every template. Swapping which reel a campaign
@@ -32,57 +38,74 @@ import {
   Upload,
 } from 'lucide-react';
 import { Alert, Badge, Card, EmptyState, formatBytes } from './ui';
-import { readFileAsDataUrl } from '@/lib/storage';
-import { MAX_ATTACHMENT_BYTES } from '@/lib/constants';
+import { MAX_ATTACHMENT_BYTES, MAX_LIBRARY_BYTES } from '@/lib/constants';
+import { putFile } from '@/lib/file-store';
 import { DRIVE_PERMISSION_REMINDER, describeDriveLink, inspectDriveUrl } from '@/lib/drive';
 
 export default function AttachmentManager({ attachments, onAttachmentsChange, reelLinks, onReelLinksChange, campaign, onCampaignChange }) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [newLink, setNewLink] = useState({ label: '', url: '' });
   const dragCounter = useRef(0);
 
   const totalBytes = attachments.reduce((sum, file) => sum + file.size, 0);
-  const percentUsed = Math.min(100, Math.round((totalBytes / MAX_ATTACHMENT_BYTES) * 100));
+  const percentUsed = Math.min(100, Math.round((totalBytes / MAX_LIBRARY_BYTES) * 100));
+
+  // What will actually ride along on the next send, as opposed to what is
+  // merely stored. The distinction drives most of the copy below.
+  const sendable = attachments.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+  const sendableBytes = sendable.reduce((sum, file) => sum + file.size, 0);
+  const oversized = attachments.length - sendable.length;
 
   const addFiles = useCallback(
     async (fileList) => {
       setError(null);
+      setNotice(null);
       const incoming = [...fileList];
       if (!incoming.length) return;
 
       let runningTotal = totalBytes;
       const accepted = [];
       const rejected = [];
+      let unpersisted = 0;
 
       for (const file of incoming) {
-        if (runningTotal + file.size > MAX_ATTACHMENT_BYTES) {
+        if (runningTotal + file.size > MAX_LIBRARY_BYTES) {
           rejected.push(`${file.name} (${formatBytes(file.size)})`);
           continue;
         }
 
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const dataUrl = await readFileAsDataUrl(file);
-          accepted.push({
-            id: `att_${Date.now()}_${accepted.length}`,
-            filename: file.name,
-            size: file.size,
-            contentType: file.type || 'application/octet-stream',
-            content: dataUrl,
-          });
-          runningTotal += file.size;
-        } catch (readError) {
-          rejected.push(`${file.name} (${readError.message})`);
-        }
+        const record = {
+          id: `att_${Date.now()}_${accepted.length}_${Math.random().toString(36).slice(2, 7)}`,
+          filename: file.name,
+          size: file.size,
+          contentType: file.type || 'application/octet-stream',
+          // The Blob itself, not base64. Encoding is deferred until a send
+          // needs it — base64 is a third larger, and holding both forms of a
+          // 40 MB file in memory for no reason is how a tab gets killed.
+          blob: file,
+        };
+
+        // eslint-disable-next-line no-await-in-loop
+        const persisted = await putFile(record);
+        if (!persisted) unpersisted += 1;
+
+        accepted.push(record);
+        runningTotal += file.size;
       }
 
       if (accepted.length) onAttachmentsChange([...attachments, ...accepted]);
 
       if (rejected.length) {
         setError(
-          `Could not attach ${rejected.join(', ')}. The total budget is ${formatBytes(MAX_ATTACHMENT_BYTES)} — ` +
-            'host anything bigger and send a link instead.',
+          `No room for ${rejected.join(', ')}. The library holds ${formatBytes(MAX_LIBRARY_BYTES)} in total — ` +
+            'remove something, or share the file as a link instead.',
+        );
+      } else if (unpersisted) {
+        setNotice(
+          `${unpersisted} file(s) could not be saved to this browser's storage, so they will be gone after a reload. ` +
+            'Private-browsing windows and full disks both cause this.',
         );
       }
     },
@@ -266,8 +289,8 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
 
       {/* ----------------------------------------------------- attachments */}
       <Card
-        title="File attachments"
-        description="Sent with every message in the campaign."
+        title="Files"
+        description={`Up to ${formatBytes(MAX_LIBRARY_BYTES)}, kept in this browser. Nothing is uploaded until you send.`}
         actions={
           attachments.length > 0 && (
             <button type="button" onClick={() => onAttachmentsChange([])} className="btn-ghost btn-sm">
@@ -312,7 +335,8 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
             {isDragging ? 'Drop to attach' : 'Drag files here, or click to browse'}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Up to {formatBytes(MAX_ATTACHMENT_BYTES)} in total across all files
+            Up to {formatBytes(MAX_LIBRARY_BYTES)} in total · files over {formatBytes(MAX_ATTACHMENT_BYTES)} are stored
+            but shared as a link rather than attached
           </p>
         </div>
 
@@ -321,9 +345,10 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between text-xs">
               <span className="text-slate-400">
-                {attachments.length} file{attachments.length === 1 ? '' : 's'} · {formatBytes(totalBytes)}
+                {attachments.length} file{attachments.length === 1 ? '' : 's'} · {formatBytes(totalBytes)} of{' '}
+                {formatBytes(MAX_LIBRARY_BYTES)}
               </span>
-              <span className={percentUsed > 85 ? 'text-amber-400' : 'text-slate-500'}>{percentUsed}% of budget</span>
+              <span className={percentUsed > 85 ? 'text-amber-400' : 'text-slate-500'}>{percentUsed}% used</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
               <div
@@ -333,35 +358,66 @@ export default function AttachmentManager({ attachments, onAttachmentsChange, re
             </div>
 
             <ul className="mt-3 flex flex-col gap-1.5">
-              {attachments.map((file) => (
-                <li
-                  key={file.id}
-                  className="flex items-center gap-3 rounded-lg border border-edge bg-surface-sunken/50 px-3 py-2"
-                >
-                  <Paperclip size={14} className="shrink-0 text-slate-500" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-slate-200">{file.filename}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {formatBytes(file.size)} · {file.contentType}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onAttachmentsChange(attachments.filter((item) => item.id !== file.id))}
-                    className="shrink-0 rounded p-1.5 text-slate-600 transition-colors hover:bg-red-950/50 hover:text-red-400"
-                    aria-label={`Remove ${file.filename}`}
+              {attachments.map((file) => {
+                const tooBigToSend = file.size > MAX_ATTACHMENT_BYTES;
+
+                return (
+                  <li
+                    key={file.id}
+                    className="flex items-center gap-3 rounded-lg border border-edge bg-surface-sunken/50 px-3 py-2"
                   >
-                    <Trash2 size={13} />
-                  </button>
-                </li>
-              ))}
+                    <Paperclip size={14} className="shrink-0 text-slate-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-slate-200">{file.filename}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatBytes(file.size)} · {file.contentType}
+                      </p>
+                    </div>
+                    {/* Says plainly which files ride along and which do not,
+                        rather than leaving the user to discover it at send. */}
+                    <Badge tone={tooBigToSend ? 'warn' : 'success'}>
+                      {tooBigToSend ? 'Link only' : 'Attaches'}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => onAttachmentsChange(attachments.filter((item) => item.id !== file.id))}
+                      className="shrink-0 rounded p-1.5 text-slate-600 transition-colors hover:bg-red-950/50 hover:text-red-400"
+                      aria-label={`Remove ${file.filename}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
+
+            {oversized > 0 && (
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                {oversized} file{oversized === 1 ? ' is' : 's are'} above the {formatBytes(MAX_ATTACHMENT_BYTES)} a
+                single message can carry — that ceiling is the hosting platform&apos;s request limit, not a setting.
+                Upload {oversized === 1 ? 'it' : 'them'} to Drive and add the link above; it also lands in the inbox
+                more reliably than an attachment would.
+              </p>
+            )}
+
+            {sendable.length > 0 && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                {sendable.length} file{sendable.length === 1 ? '' : 's'} ({formatBytes(sendableBytes)}) will be attached
+                to each message.
+              </p>
+            )}
           </div>
         )}
 
         {error && (
           <Alert tone="error" className="mt-4" onDismiss={() => setError(null)}>
             {error}
+          </Alert>
+        )}
+
+        {notice && (
+          <Alert tone="warn" className="mt-4" onDismiss={() => setNotice(null)}>
+            {notice}
           </Alert>
         )}
 

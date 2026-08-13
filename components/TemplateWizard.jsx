@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, Info, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
+import { ArrowRight, Check, Info, RefreshCw, Sparkles, Wand2, X } from 'lucide-react';
 import { Alert, Card, SelectField, Spinner, TextAreaField, TextField, Toggle } from './ui';
 import { ANGLES, TONES, buildFollowUp, buildTemplate } from '@/lib/template-builder';
 import { renderEmail } from '@/lib/templates';
@@ -26,7 +26,7 @@ const SAMPLE_LEAD = {
   email: 'hello@studionoord.nl',
 };
 
-export default function TemplateWizard({ onCreate, campaign, sampleLead, defaults = {} }) {
+export default function TemplateWizard({ onCreate, onCancel, campaign, sampleLead, defaults = {} }) {
   const [answers, setAnswers] = useState({
     service: defaults.service || '',
     audience: defaults.audience || '',
@@ -127,6 +127,14 @@ export default function TemplateWizard({ onCreate, campaign, sampleLead, default
       <Card
         title="Build a template from a few questions"
         description="Answer these and you get a working template. Edit it afterwards like any other."
+        actions={
+          onCancel && (
+            <button type="button" onClick={onCancel} className="btn-ghost btn-sm">
+              <X size={13} />
+              Cancel
+            </button>
+          )
+        }
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField

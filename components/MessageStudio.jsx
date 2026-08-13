@@ -3,26 +3,28 @@
 /**
  * components/MessageStudio.jsx  —  Tab 2 (Write message)
  * ---------------------------------------------------------------------------
- * Everything that makes up the message, in one place: the wizard that writes a
- * template for you, the full template editor, and the files and links that get
- * shared alongside it.
+ * Everything that makes up the message: the template editor, and the files and
+ * links that get shared alongside it.
  *
  * These used to be two tabs. They belong together — the template references
  * `{{reel_link}}`, and the link it resolves to is chosen here, so splitting
  * them meant tabbing back and forth to answer "what will this actually send?".
  *
- * A segmented control switches between the three, defaulting to the wizard on
- * a fresh install and the editor once templates exist.
+ * The guided wizard used to be a third section here and is no longer a
+ * destination of its own. Eight starter templates ship with the app, so the
+ * editor is never an empty room, and landing on a five-question form before
+ * you have seen a single template was the wrong first impression. The wizard
+ * still exists — it opens from a button inside the template editor, which is
+ * where someone actually decides they want a new one.
  */
 
 import { useState } from 'react';
-import { FileText, Paperclip, Wand2 } from 'lucide-react';
+import { FileText, Paperclip } from 'lucide-react';
 import TemplateManager from './TemplateManager';
 import AttachmentManager from './AttachmentManager';
 import TemplateWizard from './TemplateWizard';
 
 const SECTIONS = [
-  { id: 'wizard', label: 'Write one for me', icon: Wand2 },
   { id: 'templates', label: 'My templates', icon: FileText },
   { id: 'files', label: 'Files & links', icon: Paperclip },
 ];
@@ -39,8 +41,8 @@ export default function MessageStudio({
   sampleLead,
   scraperSettings,
 }) {
-  // Land on the wizard when there is nothing to edit yet.
-  const [section, setSection] = useState(templates.length ? 'templates' : 'wizard');
+  const [section, setSection] = useState('templates');
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   function handleWizardCreate(created) {
     const now = Date.now();
@@ -53,13 +55,12 @@ export default function MessageStudio({
 
     onTemplatesChange([...templates, ...withIds]);
 
-    // Jump straight to the editor with the new template in the list — the
-    // wizard's job is done and editing is the natural next step.
+    // The wizard's job is done; editing the result is the natural next step.
+    setWizardOpen(false);
     setSection('templates');
   }
 
   const counts = {
-    wizard: null,
     templates: templates.length,
     files: attachments.length + reelLinks.length,
   };
@@ -100,26 +101,28 @@ export default function MessageStudio({
         })}
       </div>
 
-      {section === 'wizard' && (
+      {/* Opened from the template editor rather than living in the tab bar. */}
+      {wizardOpen && (
         <TemplateWizard
           onCreate={handleWizardCreate}
+          onCancel={() => setWizardOpen(false)}
           campaign={campaign}
           sampleLead={sampleLead}
           defaults={{ service: campaign?.product || '', audience: scraperSettings?.industry || '' }}
         />
       )}
 
-      {section === 'templates' && (
+      {section === 'templates' && !wizardOpen && (
         <TemplateManager
           templates={templates}
           onTemplatesChange={onTemplatesChange}
           campaign={campaign}
           sampleLead={sampleLead}
-          onStartWizard={() => setSection('wizard')}
+          onStartWizard={() => setWizardOpen(true)}
         />
       )}
 
-      {section === 'files' && (
+      {section === 'files' && !wizardOpen && (
         <AttachmentManager
           attachments={attachments}
           onAttachmentsChange={onAttachmentsChange}

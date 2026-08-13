@@ -48,6 +48,8 @@ The location field autocompletes as you type, so "Troy" resolves to the right Tr
 
 There's a single **Open Google Maps** button for eyeballing an area yourself, an **Add a lead by hand** form, and a **Paste website URLs** box for a list you already have. The `Name` column falls back to the domain when no person is found — `intoworld.com` becomes `Intoworld` — so every row is usable in a template.
 
+A business with neither a website nor a published address is never added: there is nothing to crawl and nothing to send to, so it would only be a row you delete later. The run summary says how many were skipped for that reason. Everything that does get added can be ticked and bulk-deleted, and the table reflows to fit any screen rather than hiding the e-mail column behind a sideways scrollbar.
+
 With `ANTHROPIC_API_KEY` set, a third pass has Claude read the crawled pages and pick the *right* contact: it resolves which of six addresses on a page belongs to a decision-maker, skips `careers@`/`press@`/`legal@`, attaches names the markup never linked, and reads addresses written out as "sarah dot jansen at studio dot nl". Any address it returns is checked against the source text before being accepted, so it cannot invent one. This pass is paid — the crawler works without it.
 
 #### "Google Maps shows forty of these and this found three"
@@ -62,9 +64,7 @@ Both halves of that are usually true, for two separate reasons.
 
 ### 2. Write message
 
-Three sections behind one segmented control.
-
-**Write one for me** — answer four or five questions (what you do, who you're writing to, how it should open, tone) and get a finished template plus a matching follow-up. This runs locally: free, instant, no API key. If the deployment has an `ANTHROPIC_API_KEY` set, a second button hands the same answers to Claude for fresher wording. **That button is the only paid thing in this app** and the UI says so before you press it.
+Two sections behind one segmented control.
 
 **My templates** — unlimited templates with full create/read/update/delete, tags, and a live preview rendered against one of your real leads. Eight starter templates ship with it, across video, web, photography, writing and formal B2B.
 
@@ -83,11 +83,17 @@ Placeholders are `{{like_this}}`, case-insensitive, with a fallback after a pipe
 
 `{{name|there}}` renders `there` when the name is unknown. Use fallbacks — a message that opens `Hi ,` is worse than no message. When a placeholder resolves to nothing the renderer tidies the leftover punctuation, so `Hi {{name}}, hello` degrades to `Hi, hello`.
 
-**Files & links** — paste a Google Drive, YouTube, Vimeo or portfolio link and mark one active; `{{reel_link}}` resolves to it everywhere, so swapping which reel a campaign points at is one click. Drive links are cleaned up automatically and an *edit* link is converted to a *view* link, because an edit link either fails for the recipient or hands them write access. Drag-and-drop file attachments also work (3 MB cap), but a Drive link is the better answer for anything file-shaped — no size limit, previews inline in Gmail, and you can update the file later without resending.
+**Write for me** sits as a button above the template list rather than as a section of its own. Answer four or five questions (what you do, who you're writing to, how it should open, tone) and get a finished template plus a matching follow-up. It runs locally: free, instant, no API key. If the deployment has an `ANTHROPIC_API_KEY` set, a second button hands the same answers to Claude for fresher wording. **That button is the only paid thing in this app** and the UI says so before you press it.
+
+**Files & links** — paste a Google Drive, YouTube, Vimeo or portfolio link and mark one active; `{{reel_link}}` resolves to it everywhere, so swapping which reel a campaign points at is one click. Drive links are cleaned up automatically and an *edit* link is converted to a *view* link, because an edit link either fails for the recipient or hands them write access.
+
+Drag-and-drop files are held in a **50 MB library kept in your browser** (IndexedDB, so it survives a reload) and never uploaded anywhere until a message using them is sent. Two limits apply and the UI labels every file with which one it falls under: the library holds 50 MB, but a single *message* can only carry 3 MB, because the hosting platform caps a request body at about 4.5 MB. Anything larger is still stored and still useful — it gets shared as a link instead, which lands in the inbox more reliably than an attachment would anyway.
 
 ### 3. Send
 
 Select recipients, pick a template, set the delay range, and run it. You get pre-flight checks that block the send button until real problems are fixed, a live log, a countdown between sends, per-recipient status, and working pause/resume/stop.
+
+The list is in two blocks. **To send** holds everyone still waiting; the moment a message is delivered that lead drops out of it and appears under **Already contacted**, with the subject line and the time it went out. That is the record of who you have written to — it survives a reload, unlike the run log, and it is also what stops anyone being mailed twice by accident.
 
 **Dry run is on by default.** It renders every message and exercises the whole pipeline without touching SMTP. Leave it on for the first pass.
 
@@ -342,6 +348,7 @@ lib/
   dns-auth.js                SPF / DKIM / DMARC / MX lookups            (server)
   ai-extract.js              Optional Claude contact extraction         (server)
   spam-check.js              Content scoring, playbook, warm-up ramp    (isomorphic)
+  file-store.js              IndexedDB attachment library               (browser)
   unsubscribe.js             RFC 8058 tokens and origin resolution      (server)
   business-types.js          Industry → OSM tags, synonyms, Places query (isomorphic)
   search-urls.js             URL parsing and directory links            (isomorphic)

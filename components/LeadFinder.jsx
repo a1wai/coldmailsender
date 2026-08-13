@@ -84,6 +84,32 @@ function batchSizeFor(maxPages) {
   return 5;
 }
 
+/**
+ * Pauses between discovery attempts, in milliseconds.
+ *
+ * The public OpenStreetMap servers are free and frequently busy, so a timeout
+ * is a queue rather than a fault — and a queue clears on its own. Retrying
+ * quietly on a spaced-out interval turns what used to be a red error box into
+ * a few extra seconds of the same progress bar. Spaced rather than immediate
+ * on purpose: hammering an overloaded free service is what keeps it overloaded.
+ */
+const RETRY_DELAYS_MS = [4000, 9000];
+
+/** Interruptible sleep — a retry wait must still respond to the Stop button. */
+function wait(ms, abortRef) {
+  return new Promise((resolve) => {
+    const step = 250;
+    let waited = 0;
+    const timer = setInterval(() => {
+      waited += step;
+      if (waited >= ms || abortRef.current) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, step);
+  });
+}
+
 export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsChange, serverStatus }) {
   const [busy, setBusy] = useState(null); // 'discovering' | 'crawling' | null
   const [progress, setProgress] = useState(null);
@@ -92,6 +118,7 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
   const [showPaste, setShowPaste] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [draft, setDraft] = useState({ business: '', email: '', website: '', name: '' });
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const abortRef = useRef(false);
 
   /**
@@ -184,6 +211,52 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
     return { crawled: done, found, leads: working, cappedOut };
   }
 
+  /**
+   * Calls `/api/discover`, retrying transient upstream failures on an interval.
+   *
+   * Only 502 (both sources down) and 429 (throttled) are retried — a 400 means
+   * the search itself is wrong and will fail identically forever.
+   */
+  async function discoverWithRetry(body) {
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+      if (attempt > 0) {
+        const delay = RETRY_DELAYS_MS[attempt - 1];
+        setProgress({ phase: 'waiting', attempt: attempt + 1, total: RETRY_DELAYS_MS.length + 1, seconds: Math.round(delay / 1000) });
+        // eslint-disable-next-line no-await-in-loop
+        await wait(delay, abortRef);
+        if (abortRef.current) break;
+      }
+
+      setProgress({ phase: 'discovering', attempt: attempt + 1, total: RETRY_DELAYS_MS.length + 1 });
+
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const response = await fetch('/api/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        // eslint-disable-next-line no-await-in-loop
+        const data = await response.json();
+        if (response.ok && data.ok) return data;
+
+        lastError = new Error(data.error || `HTTP ${response.status}`);
+        lastError.transient = response.status === 502 || response.status === 429;
+        if (!lastError.transient) throw lastError;
+      } catch (error) {
+        lastError = error;
+        if (error.transient === false) throw error;
+        // A dropped connection has no status; treat it as worth one more go.
+        lastError.transient = true;
+      }
+    }
+
+    throw lastError || new Error('The search could not be completed.');
+  }
+
   /** The main action: discover businesses, then crawl the ones missing an address. */
   async function handleFindLeads() {
     if (!canSearch) return;
@@ -200,26 +273,19 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
     const capAt = runCap ? baseline + runCap : Infinity;
 
     try {
-      const response = await fetch('/api/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lat: settings.place.lat,
-          lon: settings.place.lon,
-          radius: settings.radius,
-          typeId: settings.typeId,
-          keyword: settings.keyword,
-          // Ask for enough to fill the cap even if most sites yield nothing.
-          limit: runCap ? Math.min(runCap * 3, 200) : 200,
-          source: settings.source || 'auto',
-          industry:
-            settings.industry || BUSINESS_TYPES.find((entry) => entry.id === settings.typeId)?.label || '',
-          location: settings.place.short || settings.location,
-        }),
+      const data = await discoverWithRetry({
+        lat: settings.place.lat,
+        lon: settings.place.lon,
+        radius: settings.radius,
+        typeId: settings.typeId,
+        keyword: settings.keyword,
+        // Ask for enough to fill the cap even if most sites yield nothing.
+        limit: runCap ? Math.min(runCap * 3, 200) : 200,
+        source: settings.source || 'auto',
+        industry:
+          settings.industry || BUSINESS_TYPES.find((entry) => entry.id === settings.typeId)?.label || '',
+        location: settings.place.short || settings.location,
       });
-
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
       if (!data.leads.length) {
         setFeedback({ tone: 'warn', message: explainEmptyResult(data, serverStatus) });
@@ -251,7 +317,18 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
         }),
       });
     } catch (error) {
-      setFeedback({ tone: 'error', message: error.message });
+      // A busy free map server is not an error the user did anything about, and
+      // a red box with an axios message underneath reads as "the app is
+      // broken". Say what happened in one line and what to do about it.
+      const busyUpstream = error.transient !== false;
+      setFeedback({
+        tone: busyUpstream ? 'warn' : 'error',
+        message: busyUpstream
+          ? `The map service is busy — tried ${RETRY_DELAYS_MS.length + 1} times. Give it a minute and press Find leads again${
+              serverStatus?.googlePlaces ? '.' : ', or add a Google Places key so there is a second source.'
+            }`
+          : error.message,
+      });
     } finally {
       setBusy(null);
       setProgress(null);
@@ -441,16 +518,25 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
             <div className="mb-2 flex items-center justify-between text-xs">
               <span className="flex items-center gap-1.5 font-medium text-brand-200">
                 <Loader2 size={12} className="animate-spin" />
-                {progress.phase === 'discovering'
-                  ? 'Searching OpenStreetMap for businesses…'
-                  : `Visiting websites for e-mail addresses — ${progress.done} of ${progress.total}`}
+                {progress.phase === 'crawling'
+                  ? `Visiting websites for e-mail addresses — ${progress.done} of ${progress.total}`
+                  : progress.phase === 'waiting'
+                    ? `The map service is busy — trying again in ${progress.seconds}s`
+                    : 'Searching for businesses…'}
               </span>
               {progress.found > 0 && <span className="tabular-nums text-brand-300">{progress.found} found</span>}
+              {/* Only shown once a retry is actually happening, so a normal
+                  first-time search stays uncluttered. */}
+              {progress.attempt > 1 && (
+                <span className="tabular-nums text-slate-500">
+                  attempt {progress.attempt} of {progress.total}
+                </span>
+              )}
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
               <div
                 className={`h-full rounded-full bg-brand-500 transition-[width] duration-300 ${
-                  progress.phase === 'discovering' ? 'w-1/4 animate-pulse' : ''
+                  progress.phase === 'crawling' ? '' : 'w-1/4 animate-pulse'
                 }`}
                 style={
                   progress.phase === 'crawling'
@@ -468,8 +554,12 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
           </Alert>
         )}
 
-        {/* Crawler options — collapsed visual weight, but the AI toggle is
-            worth surfacing because it changes what the crawl can find. */}
+        {/* Crawler options.
+            The AI toggle only appears once a key is configured — before that it
+            was a permanently greyed-out switch advertising a feature the user
+            cannot turn on, which is noise, not a setting. Robots.txt stays
+            because turning it off has legal consequences and that has to be a
+            deliberate, visible choice. */}
         <div className="mt-5 grid gap-3 border-t border-edge-soft pt-4 sm:grid-cols-2">
           <Toggle
             checked={settings.respectRobots !== false}
@@ -478,17 +568,15 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
             label="Respect robots.txt"
             hint="Leave on unless you own the site or have permission to crawl it."
           />
-          <Toggle
-            checked={Boolean(settings.useAi !== false && serverStatus?.aiExtract)}
-            onChange={(value) => update({ useAi: value })}
-            disabled={Boolean(busy) || !serverStatus?.aiExtract}
-            label="AI contact extraction"
-            hint={
-              serverStatus?.aiExtract
-                ? 'Claude reads each page and picks the right person — not just any address. Costs a fraction of a cent per site.'
-                : 'Set ANTHROPIC_API_KEY to enable. Paid, unlike the rest of the app.'
-            }
-          />
+          {serverStatus?.aiExtract && (
+            <Toggle
+              checked={settings.useAi !== false}
+              onChange={(value) => update({ useAi: value })}
+              disabled={Boolean(busy)}
+              label="AI contact extraction"
+              hint="Claude reads each page and picks the right person — not just any address. Costs a fraction of a cent per site."
+            />
+          )}
         </div>
 
         <div className="mt-4 rounded-xl border border-edge-soft bg-white/[0.02] p-3.5 text-[11px] leading-relaxed text-slate-500">
@@ -648,8 +736,30 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
         ) : (
           <LeadTable
             leads={leads}
-            showSelection={false}
             disabled={Boolean(busy)}
+            selectedIds={selectedIds}
+            // Selection here is for deleting, not sending — so a lead with no
+            // address, which is exactly the kind you want to clear out, has to
+            // be tickable.
+            selectionRequiresEmail={false}
+            onToggleSelect={(id) =>
+              setSelectedIds((current) => {
+                const next = new Set(current);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+            onToggleSelectAll={(ids, shouldSelect) =>
+              setSelectedIds((current) => {
+                const next = new Set(current);
+                for (const id of ids) {
+                  if (shouldSelect) next.add(id);
+                  else next.delete(id);
+                }
+                return next;
+              })
+            }
             onUpdateLead={(id, patch) =>
               onLeadsChange(
                 leads.map((lead) =>
@@ -659,7 +769,20 @@ export default function LeadFinder({ settings, onSettingsChange, leads, onLeadsC
                 ),
               )
             }
-            onDeleteLead={(id) => onLeadsChange(leads.filter((lead) => lead.id !== id))}
+            onDeleteLead={(id) => {
+              onLeadsChange(leads.filter((lead) => lead.id !== id));
+              setSelectedIds((current) => {
+                const next = new Set(current);
+                next.delete(id);
+                return next;
+              });
+            }}
+            onDeleteMany={(ids) => {
+              const doomed = new Set(ids);
+              onLeadsChange(leads.filter((lead) => !doomed.has(lead.id)));
+              setSelectedIds(new Set());
+              setFeedback({ tone: 'success', message: `Deleted ${ids.length} lead${ids.length === 1 ? '' : 's'}.` });
+            }}
           />
         )}
       </Card>
@@ -732,7 +855,9 @@ function summariseRun({ data, crawl, gained, totalWithEmail, runCap, serverStatu
 
   if (data.stats.withEmail) parts.push(`${data.stats.withEmail} published an e-mail outright`);
   if (crawl.crawled) parts.push(`crawled ${crawl.crawled} websites and found ${crawl.found} more`);
-  if (data.stats.noContactRoute) parts.push(`${data.stats.noContactRoute} had no website to crawl`);
+  if (data.stats.droppedNoContact) {
+    parts.push(`skipped ${data.stats.droppedNoContact} with no website or e-mail`);
+  }
 
   let message = `${parts.join(' · ')}. You now have ${totalWithEmail} contactable lead${totalWithEmail === 1 ? '' : 's'}.`;
 

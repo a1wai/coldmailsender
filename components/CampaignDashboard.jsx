@@ -36,6 +36,8 @@ import LeadTable from './LeadTable';
 import { createSendQueue, dedupeLeads, estimateDuration, GMAIL_DAILY_LIMIT } from '@/lib/queue';
 import { renderEmail } from '@/lib/templates';
 import { downloadCsv } from '@/lib/storage';
+import { blobToBase64 } from '@/lib/file-store';
+import { MAX_ATTACHMENT_BYTES } from '@/lib/constants';
 
 /** Keeps the log bounded — a 500-lead campaign would otherwise pin the tab. */
 const MAX_LOG_ENTRIES = 400;
@@ -84,6 +86,15 @@ export default function CampaignDashboard({
 
   const dailyRemaining = Math.max(0, GMAIL_DAILY_LIMIT - sentToday);
   const estimate = estimateDuration(sendableLeads.length, campaign.minDelay, campaign.maxDelay);
+
+  // The table splits in two: still to write to, and already written to. Sorted
+  // newest-first, because the useful question about the sent pile is almost
+  // always "what did I just send?" rather than "what did I send first?".
+  const contacted = useMemo(
+    () => leads.filter((lead) => lead.status === 'sent').sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0)),
+    [leads],
+  );
+  const pending = useMemo(() => leads.filter((lead) => lead.status !== 'sent'), [leads]);
 
   // -------------------------------------------------------------- logging
 
@@ -191,10 +202,10 @@ export default function CampaignDashboard({
   // ------------------------------------------------------------ sending
 
   const updateLeadStatus = useCallback(
-    (email, status, error = null) => {
+    (email, status, error = null, extra = null) => {
       onLeadsChange((current) =>
         current.map((lead) =>
-          lead.email?.toLowerCase() === email.toLowerCase() ? { ...lead, status, error } : lead,
+          lead.email?.toLowerCase() === email.toLowerCase() ? { ...lead, status, error, ...extra } : lead,
         ),
       );
     },
@@ -223,6 +234,21 @@ export default function CampaignDashboard({
       unsubscribeEmail: smtp.user || '',
       appendFooter: campaign.appendFooter !== false,
     };
+
+    // Encode the attachments once, up front, rather than per recipient: a
+    // campaign sends the same files to everyone, and base64-ing a 3 MB PDF for
+    // each of 200 leads would be 200 pointless reads.
+    //
+    // Files above the per-message ceiling are dropped here rather than failing
+    // the send — the library deliberately holds files too big to attach, and
+    // the Files tab already labels which ones those are.
+    let encodedAttachments = [];
+    try {
+      encodedAttachments = await encodeAttachments(attachments);
+    } catch (error) {
+      appendLog({ level: 'error', message: `Could not read the attachments: ${error.message}` });
+      return;
+    }
 
     // Mark the whole selection as queued up front so the table reflects intent.
     for (const lead of sendableLeads) updateLeadStatus(lead.email, 'queued');
@@ -253,7 +279,7 @@ export default function CampaignDashboard({
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.body,
-            attachments: attachments.map(({ filename, content, contentType }) => ({ filename, content, contentType })),
+            attachments: encodedAttachments,
             credentials: smtp.user && smtp.pass ? smtp : {},
             compliance,
             meta: { templateId: selectedTemplate.id, templateName: selectedTemplate.name },
@@ -273,7 +299,9 @@ export default function CampaignDashboard({
           });
         }
 
-        return data;
+        // Carried through so the "already contacted" record can show what was
+        // actually sent, not just that something was.
+        return { ...data, subject: rendered.subject };
       },
 
       onEvent: (event) => {
@@ -290,7 +318,13 @@ export default function CampaignDashboard({
 
         if (event.type === 'sending') updateLeadStatus(event.item.email, 'sending');
         if (event.type === 'sent') {
-          updateLeadStatus(event.item.email, 'sent');
+          // Timestamp and subject are recorded on the lead itself so the
+          // "already contacted" list survives a reload — the run log does not.
+          updateLeadStatus(event.item.email, 'sent', null, {
+            sentAt: Date.now(),
+            sentSubject: event.result?.subject || '',
+            dryRun: Boolean(campaign.dryRun),
+          });
           if (!campaign.dryRun) onRecordSend(1);
         }
         if (event.type === 'failed') updateLeadStatus(event.item.email, 'failed', event.error?.message || 'Send failed');
@@ -585,7 +619,7 @@ export default function CampaignDashboard({
 
       {/* --------------------------------------------------------- recipients */}
       <Card
-        title="Recipients"
+        title={`To send${pending.length ? ` — ${pending.length}` : ''}`}
         description="Only leads with an e-mail address can be selected."
         actions={
           <>
@@ -604,18 +638,99 @@ export default function CampaignDashboard({
         }
       >
         <LeadTable
-          leads={leads}
+          leads={pending}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onToggleSelectAll={toggleSelectAll}
           onUpdateLead={(id, patch) => onLeadsChange((current) => current.map((lead) => (lead.id === id ? { ...lead, ...patch } : lead)))}
           disabled={isRunning}
-          emptyTitle="No leads to send to"
-          emptyHint="Head to the Lead Finder tab and scrape some sites first."
+          emptyTitle={contacted.length ? 'Everyone has been contacted' : 'No leads to send to'}
+          emptyHint={
+            contacted.length
+              ? 'Every lead with an address has already been mailed. Find more in the Find leads tab.'
+              : 'Head to the Lead Finder tab and scrape some sites first.'
+          }
         />
       </Card>
+
+      {/* ------------------------------------------------------------- sent */}
+      {/* A separate block rather than a status column, so "who have I already
+          written to" is answerable at a glance instead of by scanning. A lead
+          moves down here the moment it is delivered and stops appearing above,
+          which is also what stops anyone being mailed twice by accident. */}
+      {contacted.length > 0 && (
+        <Card
+          title={`Already contacted — ${contacted.length}`}
+          description="Delivered messages. These are excluded from the list above."
+          actions={
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() =>
+                downloadCsv(
+                  contacted.map((lead) => ({
+                    business: lead.business,
+                    name: lead.name,
+                    email: lead.email,
+                    website: lead.website,
+                    status: lead.status,
+                    sentAt: lead.sentAt ? new Date(lead.sentAt).toISOString() : '',
+                    subject: lead.sentSubject || '',
+                  })),
+                  `sent-${new Date().toISOString().slice(0, 10)}`,
+                )
+              }
+            >
+              <Download size={13} />
+              Export
+            </button>
+          }
+        >
+          <ul className="flex flex-col gap-1.5">
+            {contacted.map((lead) => (
+              <li
+                key={lead.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-edge bg-surface-sunken/40 px-3 py-2"
+              >
+                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-slate-200">{lead.business || lead.name || lead.email}</p>
+                  <p className="break-all text-[11px] text-slate-500">{lead.email}</p>
+                </div>
+
+                {lead.sentSubject && (
+                  <p className="hidden min-w-0 max-w-[38%] truncate text-xs text-slate-500 sm:block" title={lead.sentSubject}>
+                    {lead.sentSubject}
+                  </p>
+                )}
+
+                {lead.sentAt && (
+                  <time
+                    dateTime={new Date(lead.sentAt).toISOString()}
+                    className="shrink-0 text-[11px] tabular-nums text-slate-500"
+                  >
+                    {formatSentAt(lead.sentAt)}
+                  </time>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
+}
+
+/** "14:32 today" beats a full timestamp for something sent minutes ago. */
+function formatSentAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const isToday = date.toDateString() === new Date().toDateString();
+
+  return isToday ? `${time} today` : `${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`;
 }
 
 const LOG_TONES = {
@@ -624,3 +739,26 @@ const LOG_TONES = {
   warn: 'text-amber-400',
   error: 'text-red-400',
 };
+
+/**
+ * Turns the stored file library into the shape `/api/send-email` expects.
+ *
+ * Files live as Blobs in IndexedDB and are base64-encoded only at this point,
+ * because base64 is a third larger than the bytes it encodes and the library
+ * is allowed to hold tens of megabytes. Anything over the per-message ceiling
+ * is skipped rather than rejected — the library is meant to hold files too big
+ * to attach, and the Files tab labels them "Link only" before you get here.
+ */
+async function encodeAttachments(attachments = []) {
+  const sendable = attachments.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+
+  return Promise.all(
+    sendable.map(async (file) => ({
+      filename: file.filename,
+      contentType: file.contentType,
+      // Older in-memory entries carry `content` as a data URL; new ones carry
+      // a Blob. Both shapes have to work, since a session can span the change.
+      content: file.blob ? await blobToBase64(file.blob) : file.content,
+    })),
+  );
+}
