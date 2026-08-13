@@ -94,6 +94,7 @@ export async function POST(request) {
   const diagnostics = { google: null, osm: null, sources: [] };
   const merged = new Map();
   const errors = [];
+  let googleFailed = false;
 
   // ---------------------------------------------------------------- Google
   if (useGoogle) {
@@ -117,6 +118,7 @@ export async function POST(request) {
       console.error('[api/discover] Google Places failed:', error.message);
       diagnostics.google = { error: error.message };
       errors.push(`Google Places: ${error.message}`);
+      googleFailed = true;
     }
   }
 
@@ -142,13 +144,19 @@ export async function POST(request) {
     } catch (error) {
       console.error('[api/discover] OpenStreetMap failed:', error.message);
       diagnostics.osm = { error: error.message };
-      errors.push(`OpenStreetMap: ${error.message}`);
+      // Unprefixed: these messages already name OpenStreetMap and explain what
+      // to do, and "OpenStreetMap: OpenStreetMap timed out" reads like a bug.
+      errors.push(error.message);
     }
   }
 
   // Both sources down (or the only enabled one) — that is a real failure.
   if (!merged.size && errors.length) {
-    return jsonError(errors.join(' · '), 502, { diagnostics });
+    const hint =
+      !googleAvailable && !googleFailed
+        ? ' Setting GOOGLE_PLACES_API_KEY gives the app a second source to fall back on when this happens.'
+        : '';
+    return jsonError(errors.join(' · ') + hint, 502, { diagnostics });
   }
 
   const leads = [...merged.values()]

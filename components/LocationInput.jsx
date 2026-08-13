@@ -173,7 +173,11 @@ export default function LocationInput({ value, selected, onChange, onSelect, dis
         <ul
           id="location-suggestions"
           role="listbox"
-          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-edge bg-white/[0.05] py-1 shadow-2xl shadow-black/50"
+          // Opaque, not glass. Every other panel in this app is translucent,
+          // but a dropdown floats *over* the form it belongs to — a see-through
+          // one lets the labels and inputs underneath show through the text and
+          // the whole thing becomes unreadable.
+          className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-edge-strong bg-surface-raised py-1 shadow-2xl shadow-black/70 ring-1 ring-black/40"
         >
           {suggestions.map((place, index) => (
             <li key={`${place.lat},${place.lon}`} role="option" aria-selected={index === highlighted}>
@@ -182,7 +186,7 @@ export default function LocationInput({ value, selected, onChange, onSelect, dis
                 onMouseEnter={() => setHighlighted(index)}
                 onClick={() => choose(place)}
                 className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors ${
-                  index === highlighted ? 'bg-brand-500/15' : 'hover:bg-white/[0.09]'
+                  index === highlighted ? 'bg-brand-500/25' : 'hover:bg-white/[0.07]'
                 }`}
               >
                 <MapPin size={13} className="mt-0.5 shrink-0 text-slate-500" />
