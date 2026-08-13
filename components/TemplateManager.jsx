@@ -222,10 +222,27 @@ export default function TemplateManager({ templates, onTemplatesChange, campaign
       <Card
         title={`Templates (${templates.length})`}
         actions={
-          <button type="button" onClick={createTemplate} className="btn-primary btn-sm" title="Create a new template">
-            <Plus size={13} />
-            New
-          </button>
+          <>
+            {/* The wizard used to be a tab of its own, which meant a fresh
+                install opened on a five-question form before showing a single
+                template. It lives here now — reachable at the moment someone
+                actually decides they want a new one. */}
+            {onStartWizard && (
+              <button
+                type="button"
+                onClick={onStartWizard}
+                className="btn-secondary btn-sm"
+                title="Answer a few questions and get a finished template"
+              >
+                <Wand2 size={13} />
+                Write for me
+              </button>
+            )}
+            <button type="button" onClick={createTemplate} className="btn-primary btn-sm" title="Create a new template">
+              <Plus size={13} />
+              New
+            </button>
+          </>
         }
         className="h-fit lg:sticky lg:top-[104px]"
       >

@@ -14,8 +14,9 @@
  * Persistence rules (see `lib/storage.js`):
  *   - Leads, templates, links, settings → localStorage.
  *   - SMTP credentials                  → sessionStorage unless the user opts in.
- *   - Attachments                       → memory only; base64 is far too large
- *                                         for the storage quota.
+ *   - Attachment binaries               → IndexedDB (`lib/file-store.js`), which
+ *                                         is on its own quota and stores Blobs
+ *                                         natively rather than base64.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -41,6 +42,7 @@ import {
   useStoredState,
   writeStorage,
 } from '@/lib/storage';
+import { deleteFile, listFiles } from '@/lib/file-store';
 import { createDefaultTemplates } from '@/lib/templates';
 import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@/lib/constants';
 
@@ -100,7 +102,9 @@ export default function Home() {
   const [notice, setNotice] = useState(null);
   const [sentToday, setSentToday] = useState(0);
 
-  // Attachments are memory-only by design — see the note at the top.
+  // Attachment binaries live in IndexedDB (see `lib/file-store.js`), not in
+  // localStorage — a base64 PDF would blow the ~5 MB origin quota and take the
+  // leads and templates down with it. Loaded once on mount.
   const [attachments, setAttachments] = useState([]);
 
   const [leads, setLeads] = useStoredState(STORAGE_KEYS.leads, []);
@@ -148,6 +152,34 @@ export default function Home() {
 
   useEffect(() => {
     setSentToday(readSendCounter().count);
+  }, []);
+
+  // Restore the file library. Failure is silent and non-fatal: with IndexedDB
+  // unavailable the app simply behaves as it used to, files-for-this-session.
+  useEffect(() => {
+    let cancelled = false;
+    listFiles().then((files) => {
+      if (!cancelled && files.length) setAttachments(files);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Mirrors removals into IndexedDB. Additions are written by the uploader
+   * itself, which already has the Blob in hand; this only has to notice what
+   * has gone so a deleted file does not come back on the next reload.
+   */
+  const handleAttachmentsChange = useCallback((next) => {
+    setAttachments((current) => {
+      const resolved = typeof next === 'function' ? next(current) : next;
+      const keep = new Set(resolved.map((file) => file.id));
+      for (const file of current) {
+        if (!keep.has(file.id)) deleteFile(file.id);
+      }
+      return resolved;
+    });
   }, []);
 
   // Note: when SENDER_POSTAL_ADDRESS / UNSUBSCRIBE_* are set server-side, the
@@ -322,7 +354,7 @@ export default function Home() {
             templates={templates}
             onTemplatesChange={setTemplates}
             attachments={attachments}
-            onAttachmentsChange={setAttachments}
+            onAttachmentsChange={handleAttachmentsChange}
             reelLinks={reelLinks}
             onReelLinksChange={setReelLinks}
             campaign={campaignWithContext}
